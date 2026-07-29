@@ -1,5 +1,6 @@
 import {FormEvent,useMemo,useState} from 'react';
-import {FileSignature,MailCheck,Send,ShieldCheck} from 'lucide-react';
+import {useNavigate} from 'react-router-dom';
+import {CheckCircle2,FileSignature,LoaderCircle,MailCheck,Send,ShieldCheck,X} from 'lucide-react';
 import {Card,Field,PrimaryButton,SecondaryButton,inputClass} from '../../components/Primitives';
 import {buildAgreementHtml,printAgreement} from '../../components/AgreementDocument';
 import {useAgreementStore,type AgreementFields,type AgreementType} from '../../store/AgreementStore';
@@ -16,6 +17,7 @@ const initial:AgreementFields={
 };
 
 export default function DocumentStudio(){
+  const navigate=useNavigate();
   const {upsertBuyer,save,sign,send,history,workflowState}=useAgreementStore();
   const [type,setType]=useState<AgreementType>('nda');
   const [f,setF]=useState(initial);
@@ -26,11 +28,17 @@ export default function DocumentStudio(){
   const [emailMessage,setEmailMessage]=useState('A secure Data Market House transaction has been prepared for you. Use the link below to review and electronically sign the NDA, then continue through the next purchase stages inside the Buyer Portal.');
   const [invites,setInvites]=useState<any[]>([]);
   const [style,setStyle]=useState('script');
+  const [sendState,setSendState]=useState<'idle'|'sending'|'sent'>('idle');
+  const [sentDetails,setSentDetails]=useState<{email:string;inviteNumber:number;expiresAt?:string}|null>(null);
+  const [toast,setToast]=useState<{tone:'success'|'error';title:string;detail:string}|null>(null);
   const html=useMemo(()=>buildAgreementHtml(type,f,false,documentId?{name:f.sellerName,title:f.sellerTitle,style}:undefined),[type,f,documentId,style]);
   const set=(k:keyof AgreementFields,v:string)=>setF(x=>({...x,[k]:v}));
   const chooseType=(v:AgreementType)=>{
     setType(v);
     setDocumentId('');
+    setSendState('idle');
+    setSentDetails(null);
+    setToast(null);
     setEmailSubject(v==='nda'?'NDA Ready for Review and Signature':'Purchase Agreement Ready for Signature');
     setEmailMessage(v==='nda'
       ?'A secure Data Market House transaction has been prepared for you. Use the link below to review and electronically sign the NDA, then continue through the next purchase stages inside the Buyer Portal.'
@@ -39,6 +47,9 @@ export default function DocumentStudio(){
 
   async function create(e:FormEvent){
     e.preventDefault();
+    setSendState('idle');
+    setSentDetails(null);
+    setToast(null);
     try{
       if(!f.buyerEmail.trim())throw new Error('Buyer email is required.');
       const buyerId=await upsertBuyer({
@@ -64,6 +75,9 @@ export default function DocumentStudio(){
   }
 
   async function signAndSend(){
+    if(sendState!=='idle')return;
+    setSendState('sending');
+    setToast(null);
     try{
       if(!documentId)throw new Error('Create the draft first.');
       if(!f.sellerName)throw new Error('Enter the employee legal name.');
@@ -73,10 +87,19 @@ export default function DocumentStudio(){
       const state=await workflowState(documentId);
       if(!state?.sellerSigned)await sign(documentId,f.sellerName,f.sellerTitle,style);
       const result=await send(documentId,emailSubject,emailMessage);
-      setInvites(await history(documentId));
-      setMessage(`${type==='nda'?'NDA invitation':'Purchase agreement notice'} sent to ${result.email}. The buyer can enter the portal and continue this transaction. Invite ${result.inviteNumber} of 3 expires in 24 hours.`);
+      const invitationHistory=await history(documentId);
+      setInvites(invitationHistory);
+      const latest=invitationHistory[0];
+      const details={email:String(result.email||f.buyerEmail),inviteNumber:Number(result.inviteNumber||latest?.inviteNumber||1),expiresAt:result.expiresAt||latest?.expiresAt};
+      setSentDetails(details);
+      setSendState('sent');
+      setMessage('');
+      setToast({tone:'success',title:'Invitation sent successfully',detail:`${details.email} can now enter the Buyer Portal.`});
     }catch(e){
-      setMessage(e instanceof Error?e.message:'Unable to finish and send');
+      const detail=e instanceof Error?e.message:'Unable to finish and send';
+      setSendState('idle');
+      setMessage(detail);
+      setToast({tone:'error',title:'Invitation was not sent',detail});
     }
   }
 
@@ -89,6 +112,13 @@ export default function DocumentStudio(){
   const required=['buyerCompany','buyerName','buyerEmail','sellerName','portfolioName','creditors','accountCount','principalBalance'];
 
   return <div className="p-5 lg:p-8"><div className="mx-auto max-w-7xl">
+    {toast&&<div className={`fixed right-5 top-5 z-50 w-[min(92vw,420px)] rounded-2xl border p-4 shadow-2xl ${toast.tone==='success'?'border-emerald-200 bg-white text-emerald-900':'border-red-200 bg-white text-red-900'}`}>
+      <div className="flex items-start gap-3">
+        <div className={`mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full ${toast.tone==='success'?'bg-emerald-100':'bg-red-100'}`}><CheckCircle2 size={20}/></div>
+        <div className="min-w-0 flex-1"><p className="font-semibold">{toast.title}</p><p className="mt-1 text-sm opacity-75">{toast.detail}</p></div>
+        <button type="button" onClick={()=>setToast(null)} className="rounded-lg p-1 opacity-50 transition hover:bg-slate-100 hover:opacity-100" aria-label="Dismiss notification"><X size={17}/></button>
+      </div>
+    </div>}
     <p className="text-xs font-bold tracking-[.2em] text-blue-600">IN-APP TRANSACTION ENTRY</p>
     <h1 className="mt-2 text-3xl font-semibold">NDA & Agreement Studio</h1>
     <p className="mt-2 text-sm text-slate-500">Sending the NDA is the buyer invitation. The buyer enters the portal with the NDA waiting, then continues through portfolio review, agreement, payment and file release.</p>
@@ -126,11 +156,31 @@ export default function DocumentStudio(){
           <PrimaryButton className="w-full">Create Draft</PrimaryButton>
         </form>
 
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <SecondaryButton onClick={()=>printAgreement(html)}>Preview / PDF</SecondaryButton>
-          <PrimaryButton onClick={signAndSend} disabled={!documentId||!f.buyerEmail}><Send size={16}/>Finish & Send</PrimaryButton>
-        </div>
-        {documentId&&<div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm"><p className="font-semibold">Ready to send</p><p className="mt-1 text-slate-600">To: <b>{f.buyerEmail}</b></p><p className="text-slate-600">Action: <b>{type==='nda'?'Open transaction and sign NDA':'Sign purchase agreement'}</b></p></div>}
+        {sendState==='sent'&&sentDetails?<div className="mt-4 rounded-[28px] border border-emerald-200 bg-emerald-50 p-6 text-center">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-emerald-600 text-white shadow-lg shadow-emerald-600/20"><CheckCircle2 size={30}/></div>
+          <p className="mt-4 text-xs font-bold uppercase tracking-[.18em] text-emerald-700">Transaction started</p>
+          <h2 className="mt-2 text-2xl font-semibold text-slate-950">Invitation Sent</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-slate-600">Your buyer received the secure {type==='nda'?'NDA invitation':'purchase agreement notice'}. There is nothing else to send right now.</p>
+          <div className="mx-auto mt-5 max-w-md rounded-2xl bg-white p-4 text-left text-sm shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Waiting on your buyer</p>
+            <p className="mt-2 text-slate-700"><b>Buyer:</b> {sentDetails.email}</p>
+            <p className="mt-1 text-slate-700"><b>Invitation:</b> {sentDetails.inviteNumber} of 3</p>
+            <p className="mt-1 text-slate-700"><b>Status:</b> Buyer action pending</p>
+            {sentDetails.expiresAt&&<p className="mt-1 text-slate-700"><b>Expires:</b> {new Date(sentDetails.expiresAt).toLocaleString()}</p>}
+          </div>
+          <div className="mt-5 grid gap-2 sm:grid-cols-2">
+            <PrimaryButton type="button" onClick={()=>navigate('/employee/alerts')}>View Transaction Alerts</PrimaryButton>
+            <SecondaryButton type="button" onClick={()=>navigate('/employee/portfolio')}>Back to Portfolio</SecondaryButton>
+          </div>
+        </div>:<>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <SecondaryButton type="button" onClick={()=>printAgreement(html)}>Preview / PDF</SecondaryButton>
+            <PrimaryButton type="button" onClick={signAndSend} disabled={!documentId||!f.buyerEmail||sendState==='sending'}>
+              {sendState==='sending'?<><LoaderCircle className="animate-spin" size={16}/>Sending…</>:<><Send size={16}/>Finish & Send</>}
+            </PrimaryButton>
+          </div>
+          {documentId&&<div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm"><p className="font-semibold">Ready to send</p><p className="mt-1 text-slate-600">To: <b>{f.buyerEmail}</b></p><p className="text-slate-600">Action: <b>{type==='nda'?'Open transaction and sign NDA':'Sign purchase agreement'}</b></p></div>}
+        </>}
         {invites.length>0&&<div className="mt-4 border-t border-slate-100 pt-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Invitation history</p>{invites.map((x:any)=><div key={x.id} className="mt-2 rounded-xl bg-slate-50 p-3 text-xs"><b>Invite {x.inviteNumber}</b> · {x.status}<br/>{new Date(x.sentAt).toLocaleString()} · expires {new Date(x.expiresAt).toLocaleString()}</div>)}</div>}
       </Card>
       <Card className="overflow-hidden p-0"><iframe title="Document preview" className="h-[1050px] w-full" srcDoc={html}/></Card>
