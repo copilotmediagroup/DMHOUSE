@@ -1,7 +1,0 @@
-DMH Sales OS v3.0.2
-
-Changes:
-- Netlify production build uses Vite transpilation directly.
-- Strict TypeScript checking remains available as npm run typecheck, but no longer blocks production deployment for legacy type-only warnings.
-- Corrected current Netlify-reported type errors in AgencyDirectory, BuyerDealRoom, AgreementSandbox, OwnerBuyerDealRoom, and PortfolioStore.
-- Bolt requires its own VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables; Netlify variables do not automatically transfer to Bolt.
