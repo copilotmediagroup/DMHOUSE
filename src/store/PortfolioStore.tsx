@@ -36,10 +36,10 @@ export function PortfolioProvider({children}:{children:ReactNode}){
   setProfile(profileRow as Profile); setRoleState(profileRow.role as UserRole);
   const portfolioFields=profileRow.role==='owner'?'*':'id,name,original_creditor,category,account_count,face_value,asking_price,employee_commission_type,employee_commission_value,employee_commission_visible,description,selling_points,status,created_at,activated_at';
   if(profileRow.role==='buyer'){setPortfolios([]);setAudit([]);return;}
-  const {data:rows,error:rowsError}=await supabase.from('portfolios').select(portfolioFields).eq('company_id',profileRow.company_id).order('created_at',{ascending:false});if(rowsError)throw rowsError;
+  const {data:rows,error:rowsError}=await (supabase.from('portfolios') as any).select(portfolioFields).eq('company_id',profileRow.company_id).order('created_at',{ascending:false});if(rowsError)throw rowsError;
   const {data:files,error:filesError}=await supabase.from('portfolio_files').select('*').eq('company_id',profileRow.company_id).is('locked_at',null).order('version',{ascending:false});if(filesError)throw filesError;
   const byPortfolio=new Map<string,any>();for(const f of files||[])if(!byPortfolio.has(f.portfolio_id))byPortfolio.set(f.portfolio_id,f);
-  setPortfolios((rows||[]).map(r=>mapPortfolio(r,byPortfolio.get(r.id))));
+  setPortfolios((rows||[]).map((r:any)=>mapPortfolio(r,byPortfolio.get(r.id))));
   const {data:auditRows,error:auditError}=await supabase.from('audit_logs').select('id,action,entity_type,created_at').eq('company_id',profileRow.company_id).order('created_at',{ascending:false}).limit(50);
   if(auditError){setAudit([]);}else{setAudit((auditRows||[]).map((a:any)=>({id:String(a.id),action:a.action,detail:`${a.action} · ${a.entity_type}`,occurredAt:a.created_at})));}
  }catch(e){setError(e instanceof Error?e.message:'Unable to load portfolios.');}finally{setLoading(false)}},[]);
