@@ -1,8 +1,0 @@
-[functions.redeem-buyer-invite]
-verify_jwt = false
-
-[functions.inbound-email-webhook]
-verify_jwt = false
-
-[functions.email-provider-webhook]
-verify_jwt = false
