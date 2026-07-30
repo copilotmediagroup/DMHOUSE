@@ -1,0 +1,23 @@
+DMH SALES OS v4.0.0 PRODUCTION CANDIDATE
+
+Canonical application
+- package.json / package-lock.json
+- src/
+- supabase/config.toml
+- supabase/migrations/001 through 062
+- supabase/functions/
+- Vite, TypeScript, Tailwind, PostCSS, and Netlify configuration
+
+Release documentation
+- README_FIRST.txt
+- INSTALL_FIRST.txt
+- DEPLOYMENT_CHECKLIST.txt
+- PRODUCTION_QA_CHECKLIST.txt
+- SECURITY_VERIFICATION.txt
+
+Removed from this release
+- duplicate root SQL files
+- duplicate migrations folder
+- duplicate Edge Function folders
+- root-level copied function index.ts
+- old generated ZIPs and build artifacts

@@ -1,0 +1,55 @@
+DMH SALES OS v4.0.0 — PRODUCTION QA CHECKLIST
+
+BUILD
+[ ] npm install completes
+[ ] npm run build completes without TypeScript or Vite errors
+[ ] Netlify deploy completes
+[ ] Browser console has no repeating errors
+[ ] Mobile and desktop navigation work
+
+OWNER
+[ ] Owner dashboard loads
+[ ] Portfolio create/edit/detail works
+[ ] Buyer invitation sends and records status
+[ ] Owner can review NDA, offers, agreements, payment, and delivery
+[ ] Owner can verify payment
+[ ] Owner can select immediate or delayed delivery
+[ ] Owner can upload/release final file
+[ ] Commission rules and payout ledger load
+[ ] Analytics loads and refreshes
+
+EMPLOYEE
+[ ] Employee dashboard loads
+[ ] Employee can see assigned portfolio/deal progress
+[ ] Employee can view authorized masked information
+[ ] Employee cannot obtain masked download URL
+[ ] Employee cannot see unmasked path, row, preview, or download
+[ ] Employee commission ledger displays system-recorded status
+
+BUYER
+[ ] Invitation redemption works in a private/incognito browser
+[ ] Buyer signs in and sees only authorized portfolios
+[ ] NDA execution unlocks masked portfolio
+[ ] Buyer can submit offer or accept asking price
+[ ] Purchase Agreement appears only after price agreement
+[ ] Payment instructions/status display
+[ ] Final file remains locked before owner verification/release
+[ ] Immediate release works
+[ ] Delayed delivery countdown/status works
+[ ] Download event is recorded
+
+SECURITY
+[ ] Run SECURITY_VERIFICATION.txt checks
+[ ] Test direct URLs while signed in as Employee
+[ ] Test direct URLs while signed in as Buyer before NDA/payment
+[ ] Confirm storage buckets are private
+[ ] Confirm signed links expire
+[ ] Confirm anonymous users cannot call sensitive RPCs
+[ ] Confirm audit events are recorded
+
+RELEASE
+[ ] Version displays v4.0.0
+[ ] Production URL is correct in APP_URL
+[ ] Test email sender/domain is verified
+[ ] Database backup exists
+[ ] GitHub release/tag created
