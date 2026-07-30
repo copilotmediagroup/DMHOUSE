@@ -1,0 +1,31 @@
+DMH Sales OS — Deal Room Command Engine v3.0.6
+
+This is a targeted patch. It does NOT contain or replace:
+- package.json
+- package-lock.json
+- .env
+- src/lib/supabase.ts
+- Edge Functions
+- invitation/auth redirect settings
+
+INSTALL IN THIS ORDER
+
+1. Supabase SQL Editor
+   Run the entire file:
+   supabase/migrations/052_staff_deal_room_command_engine.sql
+
+2. GitHub / Bolt
+   ADD:
+   src/pages/DealRoomCommand.tsx
+
+   REPLACE:
+   src/app/App.tsx
+   src/app/Shell.tsx
+
+3. Refresh Bolt. Do not reinstall dependencies unless the app itself will not start.
+
+NEW LOCATIONS
+- Owner: Deal Rooms in the left navigation
+- Employee: Deal Rooms in the left navigation
+
+This command center reads the invitation and transaction data already created by the working system. It does not change how invitations are sent.
