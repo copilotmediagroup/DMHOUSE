@@ -18,6 +18,7 @@ export interface Portfolio {
   sellingPoints: string[];
   status: PortfolioStatus;
   file?: PortfolioFile;
+  unmaskedFile?: PortfolioFile;
   createdAt: string;
   activatedAt?: string;
 }

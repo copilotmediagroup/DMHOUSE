@@ -1,4 +1,5 @@
 import {FormEvent,useMemo,useState} from 'react';
+import {useNavigate} from 'react-router-dom';
 import {FileSignature,MailCheck,Send,ShieldCheck} from 'lucide-react';
 import {Card,Field,PrimaryButton,SecondaryButton,inputClass} from '../../components/Primitives';
 import {buildAgreementHtml,printAgreement} from '../../components/AgreementDocument';
@@ -16,6 +17,7 @@ const initial:AgreementFields={
 };
 
 export default function DocumentStudio(){
+  const navigate=useNavigate();
   const {upsertBuyer,save,sign,send,history,workflowState}=useAgreementStore();
   const [type,setType]=useState<AgreementType>('nda');
   const [f,setF]=useState(initial);
@@ -74,7 +76,7 @@ export default function DocumentStudio(){
       if(!state?.sellerSigned)await sign(documentId,f.sellerName,f.sellerTitle,style);
       const result=await send(documentId,emailSubject,emailMessage);
       setInvites(await history(documentId));
-      setMessage(`${type==='nda'?'NDA invitation':'Purchase agreement notice'} sent to ${result.email}. The buyer can enter the portal and continue this transaction. Invite ${result.inviteNumber} of 3 expires in 24 hours.`);
+      navigate('/employee/invitation-sent',{replace:true,state:{buyerName:f.buyerName,buyerEmail:result.email||f.buyerEmail,portfolioName:f.portfolioName,sentAt:new Date().toISOString(),inviteNumber:result.inviteNumber}});
     }catch(e){
       setMessage(e instanceof Error?e.message:'Unable to finish and send');
     }
