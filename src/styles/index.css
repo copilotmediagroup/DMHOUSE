@@ -1,0 +1,4 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif;font-synthesis:none;text-rendering:optimizeLegibility;background:#f4f7fb}*{box-sizing:border-box}body{margin:0;min-width:320px;min-height:100vh}button,a{-webkit-tap-highlight-color:transparent}button{cursor:pointer}::selection{background:#bfdbfe;color:#0f172a}
