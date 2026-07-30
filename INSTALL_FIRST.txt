@@ -1,31 +1,33 @@
-DMH Sales OS — Deal Room Command Engine v3.0.6
+DMH SALES OS — DIGITAL CLOSING ENGINE v3.0.7
 
-This is a targeted patch. It does NOT contain or replace:
-- package.json
-- package-lock.json
-- .env
-- src/lib/supabase.ts
-- Edge Functions
-- invitation/auth redirect settings
+INSTALL ORDER
 
-INSTALL IN THIS ORDER
+1. In Supabase SQL Editor, run the complete file:
+   supabase/migrations/053_digital_closing_engine.sql
 
-1. Supabase SQL Editor
-   Run the entire file:
-   supabase/migrations/052_staff_deal_room_command_engine.sql
+2. Replace these two application files:
+   src/pages/owner/OwnerBuyerDealRoom.tsx
+   src/pages/buyer/BuyerDealRoom.tsx
 
-2. GitHub / Bolt
-   ADD:
-   src/pages/DealRoomCommand.tsx
+3. Do not replace or edit:
+   package.json
+   package-lock.json
+   .env
+   src/lib/supabase.ts
+   invitation Edge Functions
 
-   REPLACE:
-   src/app/App.tsx
-   src/app/Shell.tsx
+4. Refresh the application and test with an active deal room.
 
-3. Refresh Bolt. Do not reinstall dependencies unless the app itself will not start.
+OWNER TEST
+- Approve agreement
+- Enter payment method, amount and reference
+- Verify payment
+- Ensure a final_portfolio document exists
+- Release final files
+- Close deal
 
-NEW LOCATIONS
-- Owner: Deal Rooms in the left navigation
-- Employee: Deal Rooms in the left navigation
-
-This command center reads the invitation and transaction data already created by the working system. It does not change how invitations are sent.
+BUYER TEST
+- Open Deal Room
+- Confirm payment status appears
+- Download the released final portfolio file
+- Confirm the download appears in Owner download history
