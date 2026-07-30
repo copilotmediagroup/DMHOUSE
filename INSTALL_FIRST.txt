@@ -1,0 +1,51 @@
+DMH SALES OS v3.0.9 — AUTOMATED FOLLOW-UP SCHEDULER
+
+INSTALL ORDER
+
+1. SUPABASE SQL EDITOR
+Run the complete file:
+  supabase/migrations/055_automated_follow_up_scheduler.sql
+
+2. SUPABASE EDGE FUNCTIONS
+Create a function named:
+  run-transaction-automation
+
+Open this plain text file and paste all contents into the Edge Function editor:
+  supabase/functions/run-transaction-automation/RUN_TRANSACTION_AUTOMATION.txt
+
+Deploy the function.
+
+3. EDGE FUNCTION SECRET
+Add a strong private secret named:
+  TRANSACTION_AUTOMATION_SECRET
+
+Do not put this secret in GitHub or the browser app.
+
+4. SCHEDULE THE FUNCTION
+In Supabase Cron / Scheduled Functions, call run-transaction-automation once every hour and include this header:
+  x-cron-secret: YOUR_TRANSACTION_AUTOMATION_SECRET
+
+The function checks each company's chosen daily hour and only runs companies that are due. Hourly scheduling therefore does not send hourly emails.
+
+5. GITHUB / BOLT
+Replace only:
+  src/store/TransactionAutomationStore.tsx
+  src/pages/owner/TransactionAutomationCommand.tsx
+
+DO NOT REPLACE OR EDIT:
+  package.json
+  package-lock.json
+  .env
+  src/lib/supabase.ts
+  send-buyer-invite
+  send-transaction-followups
+  authentication redirect settings
+
+6. TEST
+Owner > Automation Command Center > Daily scheduler
+- Turn Automatic follow-ups ON
+- Choose the UTC run hour
+- Save daily schedule
+- Confirm Next run appears
+
+You can still use Plan & send follow-ups manually at any time.
