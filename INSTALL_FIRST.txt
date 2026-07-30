@@ -1,33 +1,37 @@
-DMH SALES OS — DIGITAL CLOSING ENGINE v3.0.7
+DMH Sales OS v3.0.8 — Transaction Follow-Up Email Engine
 
-INSTALL ORDER
+INSTALL IN THIS ORDER
 
-1. In Supabase SQL Editor, run the complete file:
-   supabase/migrations/053_digital_closing_engine.sql
+1. Supabase SQL Editor
+   Run the complete file:
+   supabase/migrations/054_transaction_follow_up_email_engine.sql
 
-2. Replace these two application files:
-   src/pages/owner/OwnerBuyerDealRoom.tsx
-   src/pages/buyer/BuyerDealRoom.tsx
+2. Supabase Edge Functions
+   Deploy:
+   supabase/functions/send-transaction-followups/index.ts
 
-3. Do not replace or edit:
-   package.json
-   package-lock.json
-   .env
-   src/lib/supabase.ts
-   invitation Edge Functions
+   The function uses the same existing secrets as the working email system:
+   RESEND_API_KEY
+   OUTREACH_FROM_EMAIL
+   OUTREACH_FROM_NAME (optional)
+   SUPABASE_URL
+   SUPABASE_ANON_KEY
+   SUPABASE_SERVICE_ROLE_KEY
 
-4. Refresh the application and test with an active deal room.
+3. GitHub / Bolt
+   Replace only:
+   src/store/TransactionAutomationStore.tsx
+   src/pages/owner/TransactionAutomationCommand.tsx
 
-OWNER TEST
-- Approve agreement
-- Enter payment method, amount and reference
-- Verify payment
-- Ensure a final_portfolio document exists
-- Release final files
-- Close deal
+4. Test
+   Open Owner > Automation.
+   Click "Plan & send follow-ups".
+   The engine will create deduplicated reminders and send all due messages.
 
-BUYER TEST
-- Open Deal Room
-- Confirm payment status appears
-- Download the released final portfolio file
-- Confirm the download appears in Owner download history
+DO NOT CHANGE
+package.json
+package-lock.json
+.env
+src/lib/supabase.ts
+send-buyer-invite
+invitation redirect settings
