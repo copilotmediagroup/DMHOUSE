@@ -1,16 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://ixqprtabkyurqlqskjxi.supabase.co';
+const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim();
+const key = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim();
 
-const supabaseAnonKey =
-  'sb_publishable_d88iu_TjwufU-ZJxrQ5FFw_bPwEpiYC';
+export const isSupabaseConfigured = Boolean(url && key);
 
-export const isSupabaseConfigured = true;
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
+export const supabase = createClient(
+  url || 'https://configuration-required.supabase.co',
+  key || 'configuration-required',
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
   },
-});
+);
