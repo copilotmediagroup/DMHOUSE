@@ -6,11 +6,13 @@ import {
   CalendarClock,
   CheckCircle2,
   CircleDollarSign,
+  CreditCard,
   Clock3,
   FileText,
   Gauge,
   Gavel,
   HandCoins,
+  Landmark,
   History,
   Mail,
   MessageSquare,
@@ -23,12 +25,14 @@ import { Card, Pill, PrimaryButton, SecondaryButton } from '../components/Primit
 import { supabase } from '../lib/supabase';
 import { useAgencyStore } from '../store/AgencyStore';
 import { useApprovalStore } from '../store/ApprovalStore';
+import { useClosingStore } from '../store/ClosingStore';
 import { useConversationStore } from '../store/ConversationStore';
 import { usePipelineStore } from '../store/PipelineStore';
 import { useNegotiationStore } from '../store/NegotiationStore';
+import { useRevenueStore } from '../store/RevenueStore';
 import { usePortfolioStore } from '../store/PortfolioStore';
 
-type Tab = 'overview' | 'negotiation' | 'communications' | 'documents' | 'tasks' | 'history';
+type Tab = 'overview' | 'negotiation' | 'closing' | 'communications' | 'documents' | 'tasks' | 'history';
 
 type TimelineEvent = {
   id: string;
@@ -57,6 +61,16 @@ export default function OpportunityWorkspace() {
   const { opportunities } = usePipelineStore();
   const { offers, addRound, refresh: refreshOffers } = useNegotiationStore();
   const { requests, create: createApproval, refresh: refreshApprovals } = useApprovalStore();
+  const {
+    reservations,
+    sales: closedSales,
+    employees: closingEmployees,
+    recordDeposit,
+    closeSale,
+    releaseReservation,
+    refresh: refreshClosing,
+  } = useClosingStore();
+  const { refresh: refreshRevenue } = useRevenueStore();
   const { agencies } = useAgencyStore();
   const { conversations, messages, ensure, addInternalNote, setWorkflow, refresh: refreshConversations } = useConversationStore();
   const { portfolios, profile } = usePortfolioStore();
@@ -78,6 +92,18 @@ export default function OpportunityWorkspace() {
   const [counterMessage, setCounterMessage] = useState('');
   const [negotiationBusy, setNegotiationBusy] = useState(false);
   const [negotiationNotice, setNegotiationNotice] = useState('');
+  const [closingBusy, setClosingBusy] = useState(false);
+  const [closingNotice, setClosingNotice] = useState('');
+  const [depositAmount, setDepositAmount] = useState('');
+  const [balanceAmount, setBalanceAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('wire');
+  const [paymentDate, setPaymentDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
+  const [winningEmployeeId, setWinningEmployeeId] = useState('');
+  const [commissionType, setCommissionType] = useState<'flat' | 'percentage'>('percentage');
+  const [commissionValue, setCommissionValue] = useState('0');
+  const [closingNotes, setClosingNotes] = useState('');
 
   const opportunity = opportunities.find(item => item.id === opportunityId);
   const agency = agencies.find(item => item.id === opportunity?.agencyId);
@@ -98,6 +124,18 @@ export default function OpportunityWorkspace() {
       request.status === 'pending' &&
       request.entityType === 'offer' &&
       request.entityId === activeOffer?.id,
+  );
+
+  const reservation = reservations.find(
+    item =>
+      item.agencyId === opportunity?.agencyId &&
+      item.portfolioId === opportunity?.portfolioId &&
+      (!activeOffer || item.offerId === activeOffer.id),
+  );
+  const closedSale = closedSales.find(
+    item =>
+      item.agencyId === opportunity?.agencyId &&
+      item.portfolioId === opportunity?.portfolioId,
   );
 
   const conversationMessages = useMemo(
@@ -223,6 +261,35 @@ export default function OpportunityWorkspace() {
       void supabase.removeChannel(channel);
     };
   }, [agency?.id, timelineVersion]);
+
+  useEffect(() => {
+    if (!reservation) return;
+
+    const remainingDeposit = Math.max(
+      reservation.depositRequired - reservation.depositReceived,
+      0,
+    );
+    const remainingBalance = Math.max(
+      reservation.amount -
+        reservation.depositReceived -
+        reservation.balanceReceived,
+      0,
+    );
+
+    setDepositAmount(String(remainingDeposit));
+    setBalanceAmount(String(remainingBalance));
+
+    if (!winningEmployeeId) {
+      setWinningEmployeeId(
+        activeOffer?.employeeId || closingEmployees[0]?.id || '',
+      );
+    }
+  }, [
+    activeOffer?.employeeId,
+    closingEmployees,
+    reservation,
+    winningEmployeeId,
+  ]);
 
   const negotiationMetrics = useMemo(() => {
     const asking = opportunity?.askingPrice || 0;
@@ -619,6 +686,153 @@ export default function OpportunityWorkspace() {
     }
   }
 
+
+  async function recordClosingDeposit() {
+    if (!reservation) {
+      setClosingNotice('No active reservation is linked to this opportunity.');
+      return;
+    }
+
+    const amount = Number(depositAmount);
+
+    if (amount <= 0) {
+      setClosingNotice('Enter a valid deposit amount.');
+      return;
+    }
+
+    setClosingBusy(true);
+    setClosingNotice('');
+
+    try {
+      await recordDeposit(reservation.id, {
+        amount,
+        paymentMethod,
+        receivedAt: new Date(`${paymentDate}T12:00:00`).toISOString(),
+        notes: closingNotes || undefined,
+      });
+
+      if (conversation?.id) {
+        await addInternalNote(
+          conversation.id,
+          `Deposit recorded: ${money(amount)} via ${paymentMethod}.`,
+        );
+      }
+
+      await Promise.all([
+        refreshClosing(),
+        refreshRevenue(),
+        refreshConversations(),
+      ]);
+
+      setClosingNotice('Deposit recorded successfully.');
+      setTimelineVersion(value => value + 1);
+    } catch (cause) {
+      setClosingNotice(
+        cause instanceof Error
+          ? cause.message
+          : 'Unable to record deposit.',
+      );
+    } finally {
+      setClosingBusy(false);
+    }
+  }
+
+  async function completeClosing() {
+    if (!reservation) {
+      setClosingNotice('No active reservation is linked to this opportunity.');
+      return;
+    }
+
+    const amount = Number(balanceAmount);
+
+    if (amount < 0) {
+      setClosingNotice('Enter a valid balance amount.');
+      return;
+    }
+
+    if (!winningEmployeeId) {
+      setClosingNotice('Select the winning employee.');
+      return;
+    }
+
+    setClosingBusy(true);
+    setClosingNotice('');
+
+    try {
+      await closeSale(reservation.id, {
+        balanceAmount: amount,
+        paymentMethod,
+        paidAt: new Date(`${paymentDate}T12:00:00`).toISOString(),
+        winningEmployeeId,
+        commissionType,
+        commissionValue: Number(commissionValue || 0),
+        notes: closingNotes || undefined,
+      });
+
+      if (conversation?.id) {
+        await addInternalNote(
+          conversation.id,
+          `Sale closed at ${money(reservation.amount)} via ${paymentMethod}.`,
+        );
+      }
+
+      await Promise.all([
+        refreshClosing(),
+        refreshRevenue(),
+        refreshConversations(),
+      ]);
+
+      setClosingNotice('Sale closed and revenue records refreshed.');
+      setTimelineVersion(value => value + 1);
+    } catch (cause) {
+      setClosingNotice(
+        cause instanceof Error ? cause.message : 'Unable to close sale.',
+      );
+    } finally {
+      setClosingBusy(false);
+    }
+  }
+
+  async function releaseClosingReservation() {
+    if (!reservation) {
+      setClosingNotice('No active reservation is linked to this opportunity.');
+      return;
+    }
+
+    const reason =
+      closingNotes.trim() || 'Released from Opportunity Workspace';
+
+    setClosingBusy(true);
+    setClosingNotice('');
+
+    try {
+      await releaseReservation(reservation.id, reason);
+
+      if (conversation?.id) {
+        await addInternalNote(
+          conversation.id,
+          `Reservation released. Reason: ${reason}`,
+        );
+      }
+
+      await Promise.all([
+        refreshClosing(),
+        refreshConversations(),
+      ]);
+
+      setClosingNotice('Reservation released.');
+      setTimelineVersion(value => value + 1);
+    } catch (cause) {
+      setClosingNotice(
+        cause instanceof Error
+          ? cause.message
+          : 'Unable to release reservation.',
+      );
+    } finally {
+      setClosingBusy(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1600px] p-5 md:p-8 lg:p-10">
       <Link
@@ -636,7 +850,7 @@ export default function OpportunityWorkspace() {
             <Pill tone="blue">{stageLabel(opportunity.stage)}</Pill>
           </div>
           <p className="mt-3 text-sm font-semibold text-blue-600">
-            Negotiation Intelligence Engine · v1.9.0
+            Closing Intelligence Engine · v2.0.0
           </p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">
             {agency.name}
@@ -699,6 +913,7 @@ export default function OpportunityWorkspace() {
                 [
                   ['overview', 'Overview'],
                   ['negotiation', 'Negotiation'],
+                  ['closing', 'Closing'],
                   ['communications', 'Communications'],
                   ['documents', 'Documents'],
                   ['tasks', 'Tasks'],
@@ -747,6 +962,37 @@ export default function OpportunityWorkspace() {
                 onCounterMessage={setCounterMessage}
                 onAction={addNegotiationRound}
                 onRequestApproval={requestOwnerApproval}
+              />
+            )}
+            {tab === 'closing' && (
+              <ClosingPanel
+                reservation={reservation}
+                closedSale={closedSale}
+                offer={activeOffer}
+                opportunity={opportunity}
+                profileRole={profile?.role}
+                employees={closingEmployees}
+                depositAmount={depositAmount}
+                balanceAmount={balanceAmount}
+                paymentMethod={paymentMethod}
+                paymentDate={paymentDate}
+                winningEmployeeId={winningEmployeeId}
+                commissionType={commissionType}
+                commissionValue={commissionValue}
+                notes={closingNotes}
+                busy={closingBusy}
+                notice={closingNotice}
+                onDepositAmount={setDepositAmount}
+                onBalanceAmount={setBalanceAmount}
+                onPaymentMethod={setPaymentMethod}
+                onPaymentDate={setPaymentDate}
+                onWinningEmployee={setWinningEmployeeId}
+                onCommissionType={setCommissionType}
+                onCommissionValue={setCommissionValue}
+                onNotes={setClosingNotes}
+                onRecordDeposit={recordClosingDeposit}
+                onCloseSale={completeClosing}
+                onRelease={releaseClosingReservation}
               />
             )}
             {tab === 'communications' && <Communications rows={conversationMessages} />}
@@ -1011,6 +1257,268 @@ function OverviewCard({ label, value, warning = false }: { label: string; value:
     <div className={`rounded-2xl p-5 ${warning ? 'bg-amber-50' : 'bg-slate-50'}`}>
       <p className="text-xs text-slate-400">{label}</p>
       <p className="mt-2 font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function ClosingPanel({
+  reservation,
+  closedSale,
+  offer,
+  opportunity,
+  profileRole,
+  employees,
+  depositAmount,
+  balanceAmount,
+  paymentMethod,
+  paymentDate,
+  winningEmployeeId,
+  commissionType,
+  commissionValue,
+  notes,
+  busy,
+  notice,
+  onDepositAmount,
+  onBalanceAmount,
+  onPaymentMethod,
+  onPaymentDate,
+  onWinningEmployee,
+  onCommissionType,
+  onCommissionValue,
+  onNotes,
+  onRecordDeposit,
+  onCloseSale,
+  onRelease,
+}: any) {
+  if (closedSale) {
+    return (
+      <div>
+        <div className="flex items-start gap-3 rounded-2xl bg-emerald-50 p-5">
+          <CheckCircle2 className="mt-0.5 text-emerald-600" size={22} />
+          <div>
+            <p className="font-semibold text-emerald-900">Deal closed</p>
+            <p className="mt-1 text-sm text-emerald-700">
+              Closed for {money(closedSale.salePrice)} on{' '}
+              {new Date(closedSale.closedAt).toLocaleDateString()}.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <OverviewCard label="Sale price" value={money(closedSale.salePrice)} />
+          <OverviewCard label="Acquisition cost" value={money(closedSale.acquisitionCost)} />
+          <OverviewCard label="Commission" value={money(closedSale.commissionTotal)} />
+          <OverviewCard label="Net revenue" value={money(closedSale.netRevenue)} />
+        </div>
+      </div>
+    );
+  }
+
+  if (!reservation) {
+    return (
+      <div className="grid min-h-72 place-items-center text-center">
+        <div>
+          <Landmark className="mx-auto text-blue-600" size={36} />
+          <h3 className="mt-4 text-lg font-semibold">No reservation yet</h3>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+            Accept an offer and create a reservation through the existing
+            negotiation workflow. The closing checklist and funding controls
+            will appear here automatically.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const depositComplete =
+    reservation.depositRequired <= 0 ||
+    reservation.depositReceived >= reservation.depositRequired;
+  const balanceRemaining = Math.max(
+    reservation.amount -
+      reservation.depositReceived -
+      reservation.balanceReceived,
+    0,
+  );
+  const paidComplete = reservation.status === 'paid' || balanceRemaining <= 0;
+  const expired =
+    reservation.reservationExpiresAt &&
+    new Date(reservation.reservationExpiresAt).getTime() < Date.now();
+
+  const checklist = [
+    ['Offer accepted', Boolean(offer && ['accepted', 'reserved', 'closed'].includes(offer.status))],
+    ['Reservation created', true],
+    ['Deposit received', depositComplete],
+    ['Balance received', paidComplete],
+    ['Payment method recorded', Boolean(reservation.paymentMethod)],
+    ['Sale closed', false],
+  ] as const;
+
+  return (
+    <div>
+      <div className="flex flex-col gap-4 border-b border-slate-100 pb-6 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="text-sm text-slate-500">Closing intelligence</p>
+          <h3 className="mt-1 text-xl font-semibold">Funding and release command</h3>
+        </div>
+        <Pill tone={expired ? 'danger' : reservation.status === 'paid' ? 'success' : 'blue'}>
+          {expired ? 'expired' : stageLabel(reservation.status)}
+        </Pill>
+      </div>
+
+      {notice && (
+        <div className="mt-5 rounded-2xl bg-blue-50 p-4 text-sm text-blue-800">
+          {notice}
+        </div>
+      )}
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <OverviewCard label="Accepted amount" value={money(reservation.amount)} />
+        <OverviewCard label="Deposit required" value={money(reservation.depositRequired)} />
+        <OverviewCard label="Deposit received" value={money(reservation.depositReceived)} />
+        <OverviewCard label="Balance remaining" value={money(balanceRemaining)} warning={balanceRemaining > 0} />
+      </div>
+
+      <div className="mt-7 grid gap-6 xl:grid-cols-[.9fr_1.1fr]">
+        <div>
+          <p className="text-sm text-slate-500">Closing checklist</p>
+          <div className="mt-3 space-y-3">
+            {checklist.map(([label, complete]) => (
+              <div key={label} className="flex items-center gap-3 rounded-2xl bg-slate-50 p-4">
+                {complete ? (
+                  <CheckCircle2 className="text-emerald-600" size={19} />
+                ) : (
+                  <CalendarClock className="text-slate-400" size={19} />
+                )}
+                <p className="text-sm font-semibold">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-slate-200 p-4">
+            <p className="text-xs text-slate-400">Payment deadline</p>
+            <p className="mt-1 font-semibold">
+              {new Date(`${reservation.paymentDeadline}T12:00:00`).toLocaleDateString()}
+            </p>
+            {reservation.reservationExpiresAt && (
+              <>
+                <p className="mt-4 text-xs text-slate-400">Reservation expires</p>
+                <p className={`mt-1 font-semibold ${expired ? 'text-red-700' : ''}`}>
+                  {new Date(reservation.reservationExpiresAt).toLocaleString()}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 p-5">
+          <p className="font-semibold">
+            {profileRole === 'owner' ? 'Owner closing controls' : 'Closing status'}
+          </p>
+
+          {profileRole !== 'owner' ? (
+            <p className="mt-3 text-sm leading-6 text-slate-500">
+              Employees can monitor funding progress. Only the owner can record
+              money, release reservations, or close the sale.
+            </p>
+          ) : (
+            <div className="mt-5 grid gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  type="number"
+                  min="0"
+                  className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                  placeholder="Deposit amount"
+                  value={depositAmount}
+                  onChange={event => onDepositAmount(event.target.value)}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                  placeholder="Balance amount"
+                  value={balanceAmount}
+                  onChange={event => onBalanceAmount(event.target.value)}
+                />
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <select
+                  className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                  value={paymentMethod}
+                  onChange={event => onPaymentMethod(event.target.value)}
+                >
+                  <option value="wire">Wire</option>
+                  <option value="ach">ACH</option>
+                  <option value="check">Check</option>
+                  <option value="cashier_check">Cashier's check</option>
+                </select>
+
+                <input
+                  type="date"
+                  className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                  value={paymentDate}
+                  onChange={event => onPaymentDate(event.target.value)}
+                />
+              </div>
+
+              <select
+                className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                value={winningEmployeeId}
+                onChange={event => onWinningEmployee(event.target.value)}
+              >
+                <option value="">Select winning employee</option>
+                {employees.map((employee: any) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.name}
+                  </option>
+                ))}
+              </select>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <select
+                  className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                  value={commissionType}
+                  onChange={event => onCommissionType(event.target.value)}
+                >
+                  <option value="percentage">Percentage</option>
+                  <option value="flat">Flat</option>
+                </select>
+                <input
+                  type="number"
+                  min="0"
+                  className="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                  placeholder="Commission value"
+                  value={commissionValue}
+                  onChange={event => onCommissionValue(event.target.value)}
+                />
+              </div>
+
+              <textarea
+                className="min-h-24 rounded-2xl border border-slate-200 p-4 text-sm outline-none focus:border-blue-500"
+                placeholder="Closing notes or release reason"
+                value={notes}
+                onChange={event => onNotes(event.target.value)}
+              />
+
+              {!depositComplete && (
+                <PrimaryButton disabled={busy || Number(depositAmount) <= 0} onClick={() => void onRecordDeposit()}>
+                  <CreditCard size={17} className="mr-2" />
+                  Record deposit
+                </PrimaryButton>
+              )}
+
+              <PrimaryButton disabled={busy || !winningEmployeeId} onClick={() => void onCloseSale()}>
+                <Landmark size={17} className="mr-2" />
+                Close sale
+              </PrimaryButton>
+
+              <SecondaryButton className="text-red-700" disabled={busy} onClick={() => void onRelease()}>
+                Release reservation
+              </SecondaryButton>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
