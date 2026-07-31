@@ -9,6 +9,8 @@ import {
   Clock3,
   FileText,
   Gauge,
+  Gavel,
+  HandCoins,
   History,
   Mail,
   MessageSquare,
@@ -20,15 +22,17 @@ import {
 import { Card, Pill, PrimaryButton, SecondaryButton } from '../components/Primitives';
 import { supabase } from '../lib/supabase';
 import { useAgencyStore } from '../store/AgencyStore';
+import { useApprovalStore } from '../store/ApprovalStore';
 import { useConversationStore } from '../store/ConversationStore';
 import { usePipelineStore } from '../store/PipelineStore';
+import { useNegotiationStore } from '../store/NegotiationStore';
 import { usePortfolioStore } from '../store/PortfolioStore';
 
-type Tab = 'overview' | 'communications' | 'documents' | 'tasks' | 'history';
+type Tab = 'overview' | 'negotiation' | 'communications' | 'documents' | 'tasks' | 'history';
 
 type TimelineEvent = {
   id: string;
-  type: 'stage' | 'email' | 'call' | 'note' | 'follow_up' | 'system';
+  type: 'stage' | 'offer' | 'email' | 'call' | 'note' | 'follow_up' | 'system';
   title: string;
   detail: string;
   occurredAt: string;
@@ -51,6 +55,8 @@ const stageLabel = (value: string) =>
 export default function OpportunityWorkspace() {
   const { opportunityId } = useParams();
   const { opportunities } = usePipelineStore();
+  const { offers, addRound, refresh: refreshOffers } = useNegotiationStore();
+  const { requests, create: createApproval, refresh: refreshApprovals } = useApprovalStore();
   const { agencies } = useAgencyStore();
   const { conversations, messages, ensure, addInternalNote, setWorkflow, refresh: refreshConversations } = useConversationStore();
   const { portfolios, profile } = usePortfolioStore();
@@ -67,6 +73,11 @@ export default function OpportunityWorkspace() {
   const [followUpStatus, setFollowUpStatus] = useState('waiting_on_buyer');
   const [workflowBusy, setWorkflowBusy] = useState(false);
   const [workflowNotice, setWorkflowNotice] = useState('');
+  const [counterAmount, setCounterAmount] = useState('');
+  const [counterTerms, setCounterTerms] = useState('');
+  const [counterMessage, setCounterMessage] = useState('');
+  const [negotiationBusy, setNegotiationBusy] = useState(false);
+  const [negotiationNotice, setNegotiationNotice] = useState('');
 
   const opportunity = opportunities.find(item => item.id === opportunityId);
   const agency = agencies.find(item => item.id === opportunity?.agencyId);
@@ -75,6 +86,18 @@ export default function OpportunityWorkspace() {
     item =>
       item.opportunityId === opportunity?.id ||
       item.agencyId === opportunity?.agencyId,
+  );
+
+  const activeOffer = offers.find(
+    offer =>
+      offer.agencyId === opportunity?.agencyId &&
+      (!opportunity?.portfolioId || offer.portfolioId === opportunity.portfolioId),
+  );
+  const pendingApproval = requests.find(
+    request =>
+      request.status === 'pending' &&
+      request.entityType === 'offer' &&
+      request.entityId === activeOffer?.id,
   );
 
   const conversationMessages = useMemo(
@@ -201,6 +224,35 @@ export default function OpportunityWorkspace() {
     };
   }, [agency?.id, timelineVersion]);
 
+  const negotiationMetrics = useMemo(() => {
+    const asking = opportunity?.askingPrice || 0;
+    const current = activeOffer?.currentAmount || 0;
+    const spread = Math.max(asking - current, 0);
+    const discountPercent = asking > 0 ? (spread / asking) * 100 : 0;
+    const offerPercent = asking > 0 ? (current / asking) * 100 : 0;
+
+    let recommendation = 'No structured offer recorded.';
+    let tone: 'success' | 'warning' | 'danger' | 'neutral' = 'neutral';
+
+    if (activeOffer) {
+      if (current >= asking) {
+        recommendation = 'Offer meets or exceeds asking price. Review terms and accept if clean.';
+        tone = 'success';
+      } else if (offerPercent >= 90) {
+        recommendation = 'Strong offer. Consider accepting or issuing a narrow counter.';
+        tone = 'success';
+      } else if (offerPercent >= 75) {
+        recommendation = 'Counteroffer recommended. Preserve value while keeping momentum.';
+        tone = 'warning';
+      } else {
+        recommendation = 'Large pricing gap. Escalate for owner review before accepting.';
+        tone = 'danger';
+      }
+    }
+
+    return { asking, current, spread, discountPercent, offerPercent, recommendation, tone };
+  }, [activeOffer, opportunity?.askingPrice]);
+
   const healthScore = useMemo(() => {
     if (!opportunity) return 0;
 
@@ -280,6 +332,31 @@ export default function OpportunityWorkspace() {
       occurredAt: message.createdAt,
     }));
 
+    const offerEvents: TimelineEvent[] = activeOffer
+      ? activeOffer.rounds.map(round => ({
+          id: `offer-${round.id}`,
+          type: 'offer',
+          title:
+            round.action === 'counter'
+              ? `${stageLabel(round.actorRole)} counteroffer`
+              : round.action === 'accept'
+                ? 'Offer accepted'
+                : round.action === 'reject'
+                  ? 'Offer rejected'
+                  : round.action === 'request_info'
+                    ? 'More information requested'
+                    : `${stageLabel(round.actorRole)} offer`,
+          detail: [
+            round.amount == null ? '' : money(round.amount),
+            round.terms || '',
+            round.message || '',
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          occurredAt: round.createdAt,
+        }))
+      : [];
+
     const createdEvent: TimelineEvent = {
       id: `created-${opportunity.id}`,
       type: 'system',
@@ -288,12 +365,12 @@ export default function OpportunityWorkspace() {
       occurredAt: opportunity.createdAt,
     };
 
-    return [createdEvent, ...stageEvents, ...activityEvents, ...messageEvents].sort(
+    return [createdEvent, ...stageEvents, ...offerEvents, ...activityEvents, ...messageEvents].sort(
       (first, second) =>
         new Date(second.occurredAt).getTime() -
         new Date(first.occurredAt).getTime(),
     );
-  }, [agency, conversationMessages, historyRows, opportunity]);
+  }, [activeOffer, agency, conversationMessages, historyRows, opportunity]);
 
   const groupedTimeline = useMemo(() => {
     const groups = new Map<string, TimelineEvent[]>();
@@ -441,6 +518,107 @@ export default function OpportunityWorkspace() {
     }
   }
 
+  async function addNegotiationRound(
+    action: 'counter' | 'accept' | 'reject' | 'request_info',
+  ) {
+    if (!activeOffer) {
+      setNegotiationNotice('No active offer is linked to this opportunity.');
+      return;
+    }
+
+    if (action === 'counter' && Number(counterAmount) <= 0) {
+      setNegotiationNotice('Enter a valid counteroffer amount.');
+      return;
+    }
+
+    setNegotiationBusy(true);
+    setNegotiationNotice('');
+
+    try {
+      const actorRole = profile?.role === 'owner' ? 'owner' : 'employee';
+
+      await addRound(activeOffer.id, {
+        actorRole,
+        action,
+        amount: action === 'counter' ? Number(counterAmount) : undefined,
+        terms: counterTerms || undefined,
+        message: counterMessage || undefined,
+      });
+
+      if (conversation?.id) {
+        const actionLabel =
+          action === 'counter'
+            ? `Counteroffer recorded at ${money(Number(counterAmount))}.`
+            : action === 'accept'
+              ? 'Offer accepted.'
+              : action === 'reject'
+                ? 'Offer rejected.'
+                : 'Additional buyer information requested.';
+
+        await addInternalNote(conversation.id, actionLabel);
+      }
+
+      await Promise.all([refreshOffers(), refreshConversations()]);
+      setCounterAmount('');
+      setCounterTerms('');
+      setCounterMessage('');
+      setNegotiationNotice('Negotiation updated.');
+      setTimelineVersion(value => value + 1);
+    } catch (cause) {
+      setNegotiationNotice(
+        cause instanceof Error ? cause.message : 'Unable to update negotiation.',
+      );
+    } finally {
+      setNegotiationBusy(false);
+    }
+  }
+
+  async function requestOwnerApproval() {
+    if (!activeOffer || !opportunity) {
+      setNegotiationNotice('No active offer is available for approval.');
+      return;
+    }
+
+    setNegotiationBusy(true);
+    setNegotiationNotice('');
+
+    try {
+      await createApproval({
+        requestType: 'below_floor_offer',
+        title: `${activeOffer?.agencyName ?? 'Agency'} offer approval`,
+        reason: `Buyer offer of ${money(activeOffer.currentAmount)} is ${negotiationMetrics.discountPercent.toFixed(1)}% below the opportunity asking price.`,
+        recommendation: negotiationMetrics.recommendation,
+        entityType: 'offer',
+        entityId: activeOffer.id,
+        portfolioId: activeOffer.portfolioId,
+        agencyId: activeOffer.agencyId,
+        dealId: opportunity.id,
+        assignedEmployeeId: activeOffer.employeeId,
+        originalValue: opportunity.askingPrice,
+        requestedValue: activeOffer.currentAmount,
+        financialImpact: negotiationMetrics.spread,
+        supportingNotes: counterMessage || activeOffer.conditions || '',
+      });
+
+      if (conversation?.id) {
+        await addInternalNote(
+          conversation.id,
+          `Owner approval requested for ${money(activeOffer.currentAmount)} offer.`,
+        );
+      }
+
+      await Promise.all([refreshApprovals(), refreshConversations()]);
+      setNegotiationNotice('Owner approval request created.');
+      setTimelineVersion(value => value + 1);
+    } catch (cause) {
+      setNegotiationNotice(
+        cause instanceof Error ? cause.message : 'Unable to request owner approval.',
+      );
+    } finally {
+      setNegotiationBusy(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1600px] p-5 md:p-8 lg:p-10">
       <Link
@@ -458,7 +636,7 @@ export default function OpportunityWorkspace() {
             <Pill tone="blue">{stageLabel(opportunity.stage)}</Pill>
           </div>
           <p className="mt-3 text-sm font-semibold text-blue-600">
-            Follow-Up Action Engine · v1.8.0
+            Negotiation Intelligence Engine · v1.9.0
           </p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">
             {agency.name}
@@ -520,6 +698,7 @@ export default function OpportunityWorkspace() {
               {(
                 [
                   ['overview', 'Overview'],
+                  ['negotiation', 'Negotiation'],
                   ['communications', 'Communications'],
                   ['documents', 'Documents'],
                   ['tasks', 'Tasks'],
@@ -552,6 +731,24 @@ export default function OpportunityWorkspace() {
               />
             )}
 
+            {tab === 'negotiation' && (
+              <NegotiationPanel
+                offer={activeOffer}
+                metrics={negotiationMetrics}
+                pendingApproval={pendingApproval}
+                profileRole={profile?.role}
+                counterAmount={counterAmount}
+                counterTerms={counterTerms}
+                counterMessage={counterMessage}
+                busy={negotiationBusy}
+                notice={negotiationNotice}
+                onCounterAmount={setCounterAmount}
+                onCounterTerms={setCounterTerms}
+                onCounterMessage={setCounterMessage}
+                onAction={addNegotiationRound}
+                onRequestApproval={requestOwnerApproval}
+              />
+            )}
             {tab === 'communications' && <Communications rows={conversationMessages} />}
             {tab === 'documents' && <Documents portfolioName={portfolio?.name} />}
             {tab === 'tasks' && (
@@ -818,6 +1015,167 @@ function OverviewCard({ label, value, warning = false }: { label: string; value:
   );
 }
 
+function NegotiationPanel({
+  offer,
+  metrics,
+  pendingApproval,
+  profileRole,
+  counterAmount,
+  counterTerms,
+  counterMessage,
+  busy,
+  notice,
+  onCounterAmount,
+  onCounterTerms,
+  onCounterMessage,
+  onAction,
+  onRequestApproval,
+}: any) {
+  if (!offer) {
+    return (
+      <div className="grid min-h-72 place-items-center text-center">
+        <div>
+          <HandCoins className="mx-auto text-blue-600" size={34} />
+          <h3 className="mt-4 text-lg font-semibold">No structured offer yet</h3>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+            Record the buyer offer through the existing offer workflow. Once linked
+            to this agency and portfolio, the full offer ladder will appear here.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex flex-col gap-4 border-b border-slate-100 pb-6 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="text-sm text-slate-500">Negotiation intelligence</p>
+          <h3 className="mt-1 text-xl font-semibold">Offer ladder and decision support</h3>
+        </div>
+        <Pill
+          tone={
+            offer.status === 'accepted'
+              ? 'success'
+              : offer.status === 'rejected'
+                ? 'danger'
+                : 'blue'
+          }
+        >
+          {stageLabel(offer.status)}
+        </Pill>
+      </div>
+
+      {notice && (
+        <div className="mt-5 rounded-2xl bg-blue-50 p-4 text-sm text-blue-800">
+          {notice}
+        </div>
+      )}
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <OverviewCard label="Asking price" value={money(metrics.asking)} />
+        <OverviewCard label="Current offer" value={money(metrics.current)} />
+        <OverviewCard label="Pricing spread" value={money(metrics.spread)} warning={metrics.spread > 0} />
+        <OverviewCard label="Offer vs. asking" value={`${metrics.offerPercent.toFixed(1)}%`} />
+      </div>
+
+      <div className="mt-6 rounded-2xl bg-slate-50 p-5">
+        <div className="flex items-start gap-3">
+          <Gavel className="mt-0.5 shrink-0 text-blue-600" size={20} />
+          <div>
+            <p className="font-semibold">Recommended action</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {metrics.recommendation}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-7">
+        <p className="text-sm text-slate-500">Offer ladder</p>
+        <div className="mt-3 space-y-3">
+          {offer.rounds.map((round: any) => (
+            <div key={round.id} className="rounded-2xl border border-slate-100 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">
+                    Round {round.roundNumber} · {stageLabel(round.actorRole)} {stageLabel(round.action)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {new Date(round.createdAt).toLocaleString()}
+                  </p>
+                </div>
+                {round.amount != null && (
+                  <p className="text-lg font-semibold">{money(round.amount)}</p>
+                )}
+              </div>
+              {round.terms && <p className="mt-3 text-sm text-slate-600">{round.terms}</p>}
+              {round.message && <p className="mt-2 text-sm text-slate-500">{round.message}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {!['accepted', 'rejected', 'closed'].includes(offer.status) && (
+        <div className="mt-7 rounded-2xl border border-slate-200 p-5">
+          <p className="font-semibold">Record next negotiation action</p>
+          <div className="mt-4 grid gap-3">
+            <input
+              type="number"
+              min="0"
+              className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+              placeholder="Counteroffer amount"
+              value={counterAmount}
+              onChange={event => onCounterAmount(event.target.value)}
+            />
+            <input
+              className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+              placeholder="Terms"
+              value={counterTerms}
+              onChange={event => onCounterTerms(event.target.value)}
+            />
+            <textarea
+              className="min-h-24 w-full rounded-2xl border border-slate-200 p-4 text-sm outline-none focus:border-blue-500"
+              placeholder="Negotiation note"
+              value={counterMessage}
+              onChange={event => onCounterMessage(event.target.value)}
+            />
+
+            <PrimaryButton disabled={busy || Number(counterAmount) <= 0} onClick={() => void onAction('counter')}>
+              <HandCoins size={17} className="mr-2" />
+              {busy ? 'Saving…' : 'Record counteroffer'}
+            </PrimaryButton>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <SecondaryButton disabled={busy} onClick={() => void onAction('request_info')}>
+                Request information
+              </SecondaryButton>
+
+              {profileRole === 'owner' ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <SecondaryButton disabled={busy} onClick={() => void onAction('accept')}>
+                    Accept
+                  </SecondaryButton>
+                  <SecondaryButton disabled={busy} onClick={() => void onAction('reject')}>
+                    Reject
+                  </SecondaryButton>
+                </div>
+              ) : (
+                <SecondaryButton
+                  disabled={busy || Boolean(pendingApproval)}
+                  onClick={() => void onRequestApproval()}
+                >
+                  {pendingApproval ? 'Approval pending' : 'Request owner approval'}
+                </SecondaryButton>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Communications({ rows }: { rows: any[] }) {
   if (!rows.length) return <p className="text-sm text-slate-500">No conversation activity yet.</p>;
 
@@ -917,6 +1275,7 @@ function TimelineIcon({ type, compact = false }: { type: TimelineEvent['type']; 
   const size = compact ? 11 : 18;
   const className = compact ? 'text-blue-600' : 'mt-0.5 shrink-0 text-blue-600';
 
+  if (type === 'offer') return <HandCoins size={size} className={className} />;
   if (type === 'call') return <Phone size={size} className={className} />;
   if (type === 'email') return <Mail size={size} className={className} />;
   if (type === 'stage') return <TrendingUp size={size} className={className} />;
