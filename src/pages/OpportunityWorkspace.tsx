@@ -6,6 +6,7 @@ import {
   CalendarClock,
   CheckCircle2,
   CircleDollarSign,
+  Clock3,
   FileText,
   Gauge,
   History,
@@ -51,7 +52,7 @@ export default function OpportunityWorkspace() {
   const { opportunityId } = useParams();
   const { opportunities } = usePipelineStore();
   const { agencies } = useAgencyStore();
-  const { conversations, messages, ensure, addInternalNote } = useConversationStore();
+  const { conversations, messages, ensure, addInternalNote, setWorkflow, refresh: refreshConversations } = useConversationStore();
   const { portfolios, profile } = usePortfolioStore();
 
   const [tab, setTab] = useState<Tab>('overview');
@@ -61,6 +62,11 @@ export default function OpportunityWorkspace() {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState('');
   const [timelineVersion, setTimelineVersion] = useState(0);
+  const [followUpAt, setFollowUpAt] = useState('');
+  const [followUpPriority, setFollowUpPriority] = useState('normal');
+  const [followUpStatus, setFollowUpStatus] = useState('waiting_on_buyer');
+  const [workflowBusy, setWorkflowBusy] = useState(false);
+  const [workflowNotice, setWorkflowNotice] = useState('');
 
   const opportunity = opportunities.find(item => item.id === opportunityId);
   const agency = agencies.find(item => item.id === opportunity?.agencyId);
@@ -85,9 +91,14 @@ export default function OpportunityWorkspace() {
 
   const decisionMaker = agency?.contacts.find(contact => contact.decisionMaker);
   const latestActivity = agency?.activities[0];
-  const nextFollowUp = agency?.activities.find(
+  const agencyFollowUp = agency?.activities.find(
     activity => activity.followUpAt && !activity.completedAt,
   );
+  const effectiveFollowUpAt =
+    conversation?.nextFollowUpAt || agencyFollowUp?.followUpAt;
+  const nextFollowUp = effectiveFollowUpAt
+    ? { followUpAt: effectiveFollowUpAt }
+    : undefined;
 
   const daysOpen = opportunity
     ? Math.max(
@@ -101,6 +112,28 @@ export default function OpportunityWorkspace() {
   const overdue =
     Boolean(opportunity?.expectedCloseDate) &&
     new Date(`${opportunity?.expectedCloseDate}T12:00:00`) < new Date();
+
+  useEffect(() => {
+    if (!conversation) return;
+
+    setFollowUpPriority(conversation.priority || 'normal');
+    setFollowUpStatus(conversation.status || 'waiting_on_buyer');
+
+    if (conversation.nextFollowUpAt) {
+      const value = new Date(conversation.nextFollowUpAt);
+      const local = new Date(value.getTime() - value.getTimezoneOffset() * 60000)
+        .toISOString()
+        .slice(0, 16);
+      setFollowUpAt(local);
+    } else {
+      setFollowUpAt('');
+    }
+  }, [
+    conversation?.id,
+    conversation?.nextFollowUpAt,
+    conversation?.priority,
+    conversation?.status,
+  ]);
 
   useEffect(() => {
     if (!agency?.id) {
@@ -322,6 +355,92 @@ export default function OpportunityWorkspace() {
     }
   }
 
+  async function resolveConversationId() {
+    return conversation?.id || (await ensure(opportunity!.agencyId));
+  }
+
+  async function scheduleFollowUp(nextAt?: Date) {
+    const selectedDate = nextAt || (followUpAt ? new Date(followUpAt) : null);
+
+    if (!selectedDate || Number.isNaN(selectedDate.getTime())) {
+      setWorkflowNotice('Choose a valid follow-up date and time.');
+      return;
+    }
+
+    setWorkflowBusy(true);
+    setWorkflowNotice('');
+
+    try {
+      const conversationId = await resolveConversationId();
+      const nextFollowUpAt = selectedDate.toISOString();
+
+      await setWorkflow(conversationId, {
+        status: followUpStatus,
+        priority: followUpPriority,
+        nextFollowUpAt,
+      });
+
+      await addInternalNote(
+        conversationId,
+        `Follow-up scheduled for ${selectedDate.toLocaleString()} · ${followUpPriority} priority.`,
+      );
+
+      await refreshConversations();
+      setWorkflowNotice(`Follow-up scheduled for ${selectedDate.toLocaleString()}.`);
+      setTimelineVersion(value => value + 1);
+    } catch (cause) {
+      setWorkflowNotice(
+        cause instanceof Error ? cause.message : 'Unable to schedule follow-up.',
+      );
+    } finally {
+      setWorkflowBusy(false);
+    }
+  }
+
+  async function quickSchedule(days: number) {
+    const next = new Date();
+    next.setDate(next.getDate() + days);
+    next.setHours(10, 0, 0, 0);
+
+    const local = new Date(next.getTime() - next.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+    setFollowUpAt(local);
+    await scheduleFollowUp(next);
+  }
+
+  async function completeFollowUp() {
+    if (!conversation?.id) {
+      setWorkflowNotice('No active follow-up exists for this opportunity.');
+      return;
+    }
+
+    setWorkflowBusy(true);
+    setWorkflowNotice('');
+
+    try {
+      await setWorkflow(conversation.id, {
+        clearFollowUp: true,
+        status:
+          conversation.status === 'waiting_on_buyer'
+            ? 'open'
+            : conversation.status,
+      });
+
+      await addInternalNote(conversation.id, 'Follow-up marked complete.');
+      await refreshConversations();
+      setFollowUpAt('');
+      setWorkflowNotice('Follow-up completed. The deal is ready for its next action.');
+      setTimelineVersion(value => value + 1);
+    } catch (cause) {
+      setWorkflowNotice(
+        cause instanceof Error ? cause.message : 'Unable to complete follow-up.',
+      );
+    } finally {
+      setWorkflowBusy(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1600px] p-5 md:p-8 lg:p-10">
       <Link
@@ -339,7 +458,7 @@ export default function OpportunityWorkspace() {
             <Pill tone="blue">{stageLabel(opportunity.stage)}</Pill>
           </div>
           <p className="mt-3 text-sm font-semibold text-blue-600">
-            Activity Timeline Engine · v1.7.0
+            Follow-Up Action Engine · v1.8.0
           </p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">
             {agency.name}
@@ -470,6 +589,12 @@ export default function OpportunityWorkspace() {
                       ? 'Set the next follow-up'
                       : 'Continue active deal management'}
                 </p>
+                {effectiveFollowUpAt && (
+                  <p className="mt-2 flex items-center gap-2 text-xs font-semibold text-blue-600">
+                    <Clock3 size={14} />
+                    {new Date(effectiveFollowUpAt).toLocaleString()}
+                  </p>
+                )}
                 <p className="mt-2 text-sm leading-6 text-slate-500">
                   {overdue
                     ? 'The expected close date has passed. Update the date or resolve the opportunity.'
@@ -478,6 +603,120 @@ export default function OpportunityWorkspace() {
                       : 'The deal has ownership, timing and a scheduled next action.'}
                 </p>
               </div>
+            </div>
+          </Card>
+
+          <Card className="p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm text-slate-500">Follow-Up Action Center</p>
+                <h3 className="mt-1 text-lg font-semibold">
+                  {effectiveFollowUpAt ? 'Manage next action' : 'Schedule next action'}
+                </h3>
+              </div>
+              <Pill
+                tone={
+                  effectiveFollowUpAt &&
+                  new Date(effectiveFollowUpAt).getTime() < Date.now()
+                    ? 'danger'
+                    : effectiveFollowUpAt
+                      ? 'blue'
+                      : 'warning'
+                }
+              >
+                {effectiveFollowUpAt
+                  ? new Date(effectiveFollowUpAt).getTime() < Date.now()
+                    ? 'overdue'
+                    : 'scheduled'
+                  : 'not set'}
+              </Pill>
+            </div>
+
+            {workflowNotice && (
+              <div className="mt-4 rounded-2xl bg-blue-50 p-3 text-sm text-blue-800">
+                {workflowNotice}
+              </div>
+            )}
+
+            <div className="mt-5 grid gap-3">
+              <label className="text-xs font-semibold text-slate-500">
+                Date and time
+                <input
+                  type="datetime-local"
+                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                  value={followUpAt}
+                  onChange={event => setFollowUpAt(event.target.value)}
+                />
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-xs font-semibold text-slate-500">
+                  Priority
+                  <select
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                    value={followUpPriority}
+                    onChange={event => setFollowUpPriority(event.target.value)}
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </label>
+
+                <label className="text-xs font-semibold text-slate-500">
+                  Conversation status
+                  <select
+                    className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                    value={followUpStatus}
+                    onChange={event => setFollowUpStatus(event.target.value)}
+                  >
+                    <option value="open">Open</option>
+                    <option value="waiting_on_buyer">Waiting on buyer</option>
+                    <option value="pending_internal">Pending internal</option>
+                  </select>
+                </label>
+              </div>
+
+              <PrimaryButton
+                className="w-full"
+                disabled={workflowBusy || !followUpAt}
+                onClick={() => void scheduleFollowUp()}
+              >
+                <CalendarClock size={17} className="mr-2" />
+                {workflowBusy ? 'Saving…' : 'Schedule follow-up'}
+              </PrimaryButton>
+
+              <div className="grid grid-cols-3 gap-2">
+                <SecondaryButton
+                  disabled={workflowBusy}
+                  onClick={() => void quickSchedule(1)}
+                >
+                  Tomorrow
+                </SecondaryButton>
+                <SecondaryButton
+                  disabled={workflowBusy}
+                  onClick={() => void quickSchedule(3)}
+                >
+                  3 days
+                </SecondaryButton>
+                <SecondaryButton
+                  disabled={workflowBusy}
+                  onClick={() => void quickSchedule(7)}
+                >
+                  7 days
+                </SecondaryButton>
+              </div>
+
+              {effectiveFollowUpAt && (
+                <SecondaryButton
+                  className="w-full text-emerald-700"
+                  disabled={workflowBusy}
+                  onClick={() => void completeFollowUp()}
+                >
+                  <CheckCircle2 size={17} className="mr-2" />
+                  Mark follow-up complete
+                </SecondaryButton>
+              )}
             </div>
           </Card>
 
