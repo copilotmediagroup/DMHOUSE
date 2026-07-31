@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   GripVertical,
+  Pencil,
   Plus,
   Target,
   TrendingUp,
@@ -16,7 +17,6 @@ import {
 import {
   Card,
   Field,
-  Pill,
   PrimaryButton,
   SecondaryButton,
   inputClass,
@@ -24,6 +24,7 @@ import {
 import { useAgencyStore } from '../store/AgencyStore';
 import {
   PIPELINE_STAGES,
+  type Opportunity,
   type PipelineStage,
   usePipelineStore,
 } from '../store/PipelineStore';
@@ -107,18 +108,15 @@ export default function PipelineBoard() {
 
   const missingFollowUps = useMemo(
     () =>
-      agencies.filter(agency => {
-        const next = agency.activities.find(
+      activeOpportunities.filter(opportunity => {
+        const agency = agencyById.get(opportunity.agencyId);
+        const nextFollowUp = agency?.activities.find(
           activity => activity.followUpAt && !activity.completedAt,
         );
 
-        const hasOpenOpportunity = activeOpportunities.some(
-          opportunity => opportunity.agencyId === agency.id,
-        );
-
-        return hasOpenOpportunity && !next;
+        return !nextFollowUp;
       }).length,
-    [activeOpportunities, agencies],
+    [activeOpportunities, agencyById],
   );
 
   async function move(agencyId: string, stage: PipelineStage) {
@@ -148,26 +146,30 @@ export default function PipelineBoard() {
   function nextStage(stage: PipelineStage): PipelineStage | null {
     if (stage === 'closed_won' || stage === 'closed_lost') return null;
 
-    const index = PIPELINE_STAGES.indexOf(stage);
-    const next = PIPELINE_STAGES[index + 1];
+    const currentIndex = PIPELINE_STAGES.indexOf(stage);
+    const next = PIPELINE_STAGES[currentIndex + 1];
 
     if (!next || next === 'closed_lost') return null;
     return next;
   }
+
+  const workspaceBase =
+    profile?.role === 'owner' ? '/pipeline' : '/employee/pipeline';
 
   return (
     <div className="p-5 md:p-8 lg:p-10">
       <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-sm font-semibold text-blue-600">
-            Sales Pipeline Engine · v1.5.0
+            Pipeline Command Center · v1.6.1
           </p>
+
           <h2 className="mt-1 text-3xl font-semibold tracking-tight">
-            Move buyers toward a closed deal.
+            Choose the deal. Open the workspace. Close the sale.
           </h2>
+
           <p className="mt-2 text-slate-500">
-            Every agency, opportunity, owner and next action in one operating
-            view.
+            The board shows position. The workspace handles the work.
           </p>
         </div>
 
@@ -186,17 +188,20 @@ export default function PipelineBoard() {
           label="Open pipeline"
           value={money(totalPipeline)}
         />
+
         <SummaryCard
           icon={<TrendingUp />}
           label="Weighted pipeline"
           value={money(weightedPipeline)}
         />
+
         <SummaryCard
           icon={<AlertTriangle />}
           label="Overdue expected closes"
           value={String(overdueCount)}
           warning={overdueCount > 0}
         />
+
         <SummaryCard
           icon={<CalendarClock />}
           label="Missing next follow-up"
@@ -213,21 +218,19 @@ export default function PipelineBoard() {
 
       <div className="mt-7 overflow-x-auto pb-5">
         <div className="flex min-w-max gap-4">
-          {PIPELINE_STAGES.map(stage => {
-            const cards = agencies.filter(
-              agency => (agency.pipelineStage || 'new') === stage,
-            );
-
-            const stageOpportunities = opportunities.filter(
+          {PIPELINE_STAGES.filter(
+            stage => !['closed_won', 'closed_lost'].includes(stage),
+          ).map(stage => {
+            const stageOpportunities = activeOpportunities.filter(
               opportunity => opportunity.stage === stage,
             );
 
-            const value = stageOpportunities.reduce(
+            const stageValue = stageOpportunities.reduce(
               (total, opportunity) => total + opportunity.askingPrice,
               0,
             );
 
-            const weighted = stageOpportunities.reduce(
+            const stageWeighted = stageOpportunities.reduce(
               (total, opportunity) =>
                 total +
                 (opportunity.askingPrice * opportunity.probability) / 100,
@@ -239,63 +242,58 @@ export default function PipelineBoard() {
                 key={stage}
                 onDragOver={event => event.preventDefault()}
                 onDrop={() => void drop(stage)}
-                className="w-[330px] rounded-[24px] border border-slate-200 bg-slate-100/70 p-3"
+                className="w-[340px] rounded-[24px] border border-slate-200 bg-slate-100/70 p-3"
               >
                 <div className="flex items-start justify-between px-2 py-2">
                   <div>
                     <p className="text-sm font-semibold">{labels[stage]}</p>
                     <p className="mt-1 text-xs text-slate-500">
-                      {cards.length} agencies · {money(value)}
+                      {stageOpportunities.length} opportunit
+                      {stageOpportunities.length === 1 ? 'y' : 'ies'} ·{' '}
+                      {money(stageValue)}
                     </p>
                     <p className="mt-1 text-xs text-slate-400">
-                      Weighted {money(weighted)}
+                      Weighted {money(stageWeighted)}
                     </p>
                   </div>
 
                   <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold">
-                    {cards.length}
+                    {stageOpportunities.length}
                   </span>
                 </div>
 
                 <div className="mt-2 min-h-[190px] space-y-3">
-                  {cards.map(agency => {
-                    const opportunity =
-                      opportunities.find(
-                        item =>
-                          item.agencyId === agency.id &&
-                          !['closed_won', 'closed_lost'].includes(item.stage),
-                      ) ||
-                      opportunities.find(item => item.agencyId === agency.id);
+                  {stageOpportunities.map(opportunity => {
+                    const agency = agencyById.get(opportunity.agencyId);
 
-                    const decisionMaker = agency.contacts.find(
-                      contact => contact.decisionMaker,
+                    if (!agency) {
+                      return (
+                        <MissingAgencyCard
+                          key={opportunity.id}
+                          opportunity={opportunity}
+                        />
+                      );
+                    }
+
+                    const portfolio = portfolios.find(
+                      item => item.id === opportunity.portfolioId,
                     );
-
-                    const lastActivity = agency.activities[0];
 
                     const nextFollowUp = agency.activities.find(
                       activity => activity.followUpAt && !activity.completedAt,
                     );
 
-                    const portfolio = portfolios.find(
-                      item => item.id === opportunity?.portfolioId,
-                    );
-
+                    const latestActivity = agency.activities[0];
                     const next = nextStage(stage);
-
-                    const overdue =
-                      opportunity?.expectedCloseDate &&
-                      new Date(
-                        `${opportunity.expectedCloseDate}T12:00:00`,
-                      ) < new Date();
-
                     const busy = busyAgency === agency.id;
 
                     return (
                       <Card
-                        key={agency.id}
+                        key={opportunity.id}
                         className={`p-4 transition ${
-                          busy ? 'opacity-60' : 'hover:-translate-y-0.5 hover:shadow-lg'
+                          busy
+                            ? 'opacity-60'
+                            : 'hover:-translate-y-0.5 hover:shadow-lg'
                         }`}
                       >
                         <div
@@ -304,25 +302,11 @@ export default function PipelineBoard() {
                           className="flex cursor-grab items-start justify-between gap-3"
                         >
                           <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Link
-                                to={`${
-                                  profile?.role === 'owner'
-                                    ? '/agencies'
-                                    : '/employee/agencies'
-                                }/${agency.id}`}
-                                className="truncate font-semibold hover:text-blue-600"
-                              >
-                                {agency.name}
-                              </Link>
-
-                              {overdue && <Pill tone="warning">overdue</Pill>}
-                            </div>
-
+                            <p className="truncate text-lg font-semibold">
+                              {agency.name}
+                            </p>
                             <p className="mt-1 truncate text-xs text-slate-500">
-                              {decisionMaker
-                                ? `${decisionMaker.firstName} ${decisionMaker.lastName}`.trim()
-                                : 'Decision maker needed'}
+                              {agency.ownerEmployeeName}
                             </p>
                           </div>
 
@@ -332,100 +316,134 @@ export default function PipelineBoard() {
                           />
                         </div>
 
-                        <div className="mt-4 rounded-2xl bg-slate-50 p-3">
-                          <p className="truncate text-xs font-semibold text-slate-700">
+                        <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                            Portfolio
+                          </p>
+                          <p className="mt-1 truncate text-sm font-semibold">
                             {portfolio?.name || 'No portfolio assigned'}
                           </p>
 
-                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                            <Mini
+                          <div className="mt-4 grid grid-cols-2 gap-3">
+                            <Metric
                               icon={<CircleDollarSign size={14} />}
-                              label={
-                                opportunity
-                                  ? money(opportunity.askingPrice)
-                                  : 'No value'
-                              }
+                              label="Deal value"
+                              value={money(opportunity.askingPrice)}
                             />
-                            <Mini
+
+                            <Metric
                               icon={<Target size={14} />}
-                              label={
-                                opportunity
-                                  ? `${opportunity.probability}% probability`
-                                  : 'No probability'
-                              }
+                              label="Probability"
+                              value={`${opportunity.probability}%`}
                             />
-                            <Mini
-                              icon={<UserRound size={14} />}
-                              label={agency.ownerEmployeeName}
+
+                            <Metric
+                              icon={<TrendingUp size={14} />}
+                              label="Weighted"
+                              value={money(
+                                (opportunity.askingPrice *
+                                  opportunity.probability) /
+                                  100,
+                              )}
                             />
-                            <Mini
+
+                            <Metric
                               icon={<CalendarClock size={14} />}
-                              label={
+                              label="Next follow-up"
+                              value={
                                 nextFollowUp?.followUpAt
                                   ? new Date(
                                       nextFollowUp.followUpAt,
                                     ).toLocaleDateString()
-                                  : 'No follow-up'
+                                  : 'Not scheduled'
+                              }
+                            />
+
+                            <Metric
+                              icon={<UserRound size={14} />}
+                              label="Owner"
+                              value={agency.ownerEmployeeName}
+                            />
+
+                            <Metric
+                              icon={<CalendarClock size={14} />}
+                              label="Expected close"
+                              value={
+                                opportunity.expectedCloseDate
+                                  ? new Date(
+                                      `${opportunity.expectedCloseDate}T12:00:00`,
+                                    ).toLocaleDateString()
+                                  : 'Not scheduled'
                               }
                             />
                           </div>
                         </div>
 
-                        <div className="mt-3 rounded-xl border border-slate-100 p-3">
+                        <div className="mt-3 rounded-2xl border border-slate-100 p-4">
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                             Latest activity
                           </p>
-                          <p className="mt-1 truncate text-xs text-slate-600">
-                            {lastActivity?.disposition || 'No recorded activity'}
+                          <p className="mt-1 truncate text-sm text-slate-600">
+                            {latestActivity?.disposition || 'No activity recorded'}
                           </p>
                         </div>
 
-                        <div className="mt-4 grid gap-2">
-                          <button
-                            onClick={() => setOpen(agency.id)}
-                            className="w-full rounded-xl border border-slate-200 py-2 text-xs font-semibold hover:bg-slate-50"
+                        <div className="mt-4 space-y-2">
+                          <Link
+                            to={`${workspaceBase}/${opportunity.id}`}
+                            className="flex w-full items-center justify-center rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700"
                           >
-                            {opportunity
-                              ? 'Edit opportunity'
-                              : 'Add opportunity'}
-                          </button>
+                            Open workspace
+                            <ArrowRight size={15} className="ml-2" />
+                          </Link>
 
-                          {next && (
+                          <div className="grid grid-cols-2 gap-2">
                             <button
-                              onClick={() => void move(agency.id, next)}
-                              disabled={busy}
-                              className="flex w-full items-center justify-center rounded-xl bg-slate-950 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                              onClick={() => setOpen(agency.id)}
+                              className="flex items-center justify-center rounded-xl border border-slate-200 py-2 text-xs font-semibold hover:bg-slate-50"
                             >
-                              Advance to {labels[next]}
-                              <ArrowRight size={14} className="ml-2" />
+                              <Pencil size={14} className="mr-1.5" />
+                              Edit
                             </button>
-                          )}
 
-                          {!['closed_won', 'closed_lost'].includes(stage) && (
-                            <div className="grid grid-cols-2 gap-2">
+                            {next ? (
                               <button
-                                onClick={() =>
-                                  void move(agency.id, 'closed_won')
-                                }
+                                onClick={() => void move(agency.id, next)}
                                 disabled={busy}
-                                className="flex items-center justify-center rounded-xl border border-emerald-200 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                                className="flex items-center justify-center rounded-xl border border-slate-200 py-2 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50"
                               >
-                                <CheckCircle2 size={14} className="mr-1.5" />
-                                Won
+                                Advance
+                                <ArrowRight size={14} className="ml-1.5" />
                               </button>
+                            ) : (
+                              <button
+                                disabled
+                                className="rounded-xl border border-slate-200 py-2 text-xs font-semibold text-slate-300"
+                              >
+                                Final stage
+                              </button>
+                            )}
+                          </div>
 
-                              <button
-                                onClick={() =>
-                                  void move(agency.id, 'closed_lost')
-                                }
-                                disabled={busy}
-                                className="flex items-center justify-center rounded-xl border border-red-200 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
-                              >
-                                <X size={14} className="mr-1.5" />
-                                Lost
-                              </button>
-                            </div>
-                          )}
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              onClick={() => void move(agency.id, 'closed_won')}
+                              disabled={busy}
+                              className="flex items-center justify-center rounded-xl border border-emerald-200 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+                            >
+                              <CheckCircle2 size={14} className="mr-1.5" />
+                              Won
+                            </button>
+
+                            <button
+                              onClick={() => void move(agency.id, 'closed_lost')}
+                              disabled={busy}
+                              className="flex items-center justify-center rounded-xl border border-red-200 py-2 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                            >
+                              <X size={14} className="mr-1.5" />
+                              Lost
+                            </button>
+                          </div>
                         </div>
                       </Card>
                     );
@@ -457,6 +475,26 @@ export default function PipelineBoard() {
   );
 }
 
+function MissingAgencyCard({
+  opportunity,
+}: {
+  opportunity: Opportunity;
+}) {
+  return (
+    <Card className="border-amber-200 p-4">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="mt-0.5 shrink-0 text-amber-600" size={18} />
+        <div>
+          <p className="font-semibold">Agency record unavailable</p>
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            {opportunity.title} exists, but its linked agency was not returned.
+          </p>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function SummaryCard({
   icon,
   label,
@@ -477,11 +515,24 @@ function SummaryCard({
   );
 }
 
-function Mini({ icon, label }: { icon: ReactNode; label: string }) {
+function Metric({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+}) {
   return (
-    <div className="flex min-w-0 items-center gap-2 text-slate-600">
-      <span className="shrink-0">{icon}</span>
-      <span className="truncate">{label}</span>
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5 text-slate-400">
+        {icon}
+        <p className="text-[11px]">{label}</p>
+      </div>
+      <p className="mt-1 truncate text-xs font-semibold text-slate-700">
+        {value}
+      </p>
     </div>
   );
 }
