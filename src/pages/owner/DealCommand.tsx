@@ -14,7 +14,7 @@ type Checklist = { id:string; opportunity_id:string; item_key:string; label:stri
 type Dashboard = { activePipeline:number; negotiations:number; closing:number; fundedThisMonth:number; averageDaysToClose:number };
 const money=(n=0)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n);
 const when=(v?:string)=>v?new Intl.DateTimeFormat('en-US',{dateStyle:'medium',timeStyle:'short'}).format(new Date(v)):'—';
-const stageLabel=(v:string)=>v.replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());
+const stageLabel=(v:string)=>v.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 
 export default function DealCommand(){
  const {profile}=usePortfolioStore(); const {agencies}=useAgencyStore(); const {opportunities,refresh:refreshPipeline}=usePipelineStore();const {conversations,messages}=useConversationStore();const navigate=useNavigate();const [params]=useSearchParams();

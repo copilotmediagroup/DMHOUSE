@@ -69,7 +69,7 @@ export default function AgencyDetail(){
       <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-3">
-            <Pill tone={agency.status==='interested'?'success':'blue'}>{agency.status.replace(/_/g,' ')}</Pill>
+            <Pill tone="blue">{agency.status.replace(/_/g,' ')}</Pill>
             {(agency.category||agency.city||agency.state)&&<span className="text-sm text-slate-500">{agency.category||[agency.city,agency.state].filter(Boolean).join(', ')}</span>}
             {agency.rating!=null&&<span className="inline-flex items-center gap-1 text-sm font-semibold text-amber-600"><Star size={15} fill="currentColor"/>{agency.rating.toFixed(1)}{agency.reviewCount!=null&&<span className="font-normal text-slate-400">({agency.reviewCount.toLocaleString()} reviews)</span>}</span>}
           </div>

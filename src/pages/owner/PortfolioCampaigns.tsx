@@ -9,7 +9,7 @@ import { useMatchingStore } from '../../store/MatchingStore';
 import { type RecipientStatus, useCampaignStore } from '../../store/CampaignStore';
 
 const money=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0});
-const vars=(text:string,data:Record<string,string|number>)=>Object.entries(data).reduce((out,[key,value])=>out.replaceAll(`{{${key}}}`,String(value)),text);
+const vars=(text:string,data:Record<string,string|number>)=>Object.entries(data).reduce((out,[key,value])=>out.split(`{{${key}}}`).join(String(value)),text);
 export default function PortfolioCampaigns(){
  const {portfolios}=usePortfolioStore();const {agencies}=useAgencyStore();const {templates}=useOutreachStore();const {matches,employees}=useMatchingStore();const {campaigns,recipients,events,loading,error,createCampaign,setCampaignStatus,addRecipient,removeRecipient,assignRecipient,updateRecipientStatus,sendRecipient}=useCampaignStore();
  const [selectedId,setSelectedId]=useState(campaigns[0]?.id||'');const selected=campaigns.find(c=>c.id===selectedId)||campaigns[0];const [creating,setCreating]=useState(false);const [message,setMessage]=useState('');

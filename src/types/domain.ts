@@ -1,5 +1,21 @@
 export type UserRole = 'owner' | 'employee' | 'buyer';
 export type PortfolioStatus = 'draft' | 'ready' | 'active' | 'negotiating' | 'reserved' | 'payment_pending' | 'sold' | 'archived';
+export type OfferStatus = 'submitted' | 'owner_countered' | 'buyer_countered' | 'accepted' | 'rejected' | 'expired' | 'reserved' | 'closed';
+
+export interface Metric {
+  label: string;
+  value: string | number;
+  hint?: string;
+}
+
+export interface Decision {
+  id: string;
+  type: 'counter' | 'reservation' | 'closing' | 'follow_up';
+  title: string;
+  subtitle: string;
+  amount?: number;
+  urgency: 'normal' | 'high';
+}
 
 export interface Portfolio {
   id: string;

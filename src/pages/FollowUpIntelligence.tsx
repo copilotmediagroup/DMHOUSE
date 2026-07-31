@@ -8,7 +8,7 @@ import {usePortfolioStore} from '../store/PortfolioStore';
 
 const DAY=86400000;
 const label=(value?:string)=>value?new Intl.DateTimeFormat('en-US',{dateStyle:'medium',timeStyle:'short'}).format(new Date(value)):'Not scheduled';
-const statusLabel=(value:string)=>value.replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());
+const statusLabel=(value:string)=>value.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
 
 type Bucket='overdue'|'today'|'upcoming'|'noReply';
 
