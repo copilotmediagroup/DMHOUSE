@@ -60,8 +60,8 @@ const stageLabel = (value: string) =>
 
 export default function OpportunityWorkspace() {
   const { opportunityId } = useParams();
-  const { opportunities } = usePipelineStore();
-  const { offers, addRound, refresh: refreshOffers } = useNegotiationStore();
+  const { opportunities, moveAgency, refresh: refreshPipeline } = usePipelineStore();
+  const { offers, addRound, reserve, refresh: refreshOffers } = useNegotiationStore();
   const { requests, create: createApproval, refresh: refreshApprovals } = useApprovalStore();
   const {
     reservations,
@@ -112,6 +112,13 @@ export default function OpportunityWorkspace() {
     'all' | TimelineEvent['type']
   >('all');
   const [expandedTimelineId, setExpandedTimelineId] = useState<string | null>(null);
+  const [reservationDeadline, setReservationDeadline] = useState(
+    new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10),
+  );
+  const [reservationExpiresAt, setReservationExpiresAt] = useState(
+    new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 16),
+  );
+  const [reservationDeposit, setReservationDeposit] = useState('0');
 
   const opportunity = opportunities.find(item => item.id === opportunityId);
   const agency = agencies.find(item => item.id === opportunity?.agencyId);
@@ -145,6 +152,8 @@ export default function OpportunityWorkspace() {
       item.agencyId === opportunity?.agencyId &&
       item.portfolioId === opportunity?.portfolioId,
   );
+
+  const dealLocked = Boolean(closedSale);
 
   const relatedCommissions = closingCommissions.filter(
     item => item.saleId === closedSale?.id,
@@ -625,6 +634,7 @@ export default function OpportunityWorkspace() {
     profile?.role === 'owner' ? '/pipeline' : '/employee/pipeline';
 
   async function saveInternalNote() {
+    if (dealLocked) return;
     const body = note.trim();
     if (!body) return;
 
@@ -647,6 +657,7 @@ export default function OpportunityWorkspace() {
   }
 
   async function scheduleFollowUp(nextAt?: Date) {
+    if (dealLocked) return;
     const selectedDate = nextAt || (followUpAt ? new Date(followUpAt) : null);
 
     if (!selectedDate || Number.isNaN(selectedDate.getTime())) {
@@ -697,6 +708,7 @@ export default function OpportunityWorkspace() {
   }
 
   async function completeFollowUp() {
+    if (dealLocked) return;
     if (!conversation?.id) {
       setWorkflowNotice('No active follow-up exists for this opportunity.');
       return;
@@ -731,6 +743,7 @@ export default function OpportunityWorkspace() {
   async function addNegotiationRound(
     action: 'counter' | 'accept' | 'reject' | 'request_info',
   ) {
+    if (dealLocked) return;
     if (!activeOffer) {
       setNegotiationNotice('No active offer is linked to this opportunity.');
       return;
@@ -783,7 +796,94 @@ export default function OpportunityWorkspace() {
     }
   }
 
+  async function acceptOfferAndCreateReservation() {
+    if (dealLocked) return;
+
+    if (!activeOffer) {
+      setNegotiationNotice('No active offer is available.');
+      return;
+    }
+
+    if (reservation) {
+      setNegotiationNotice('A reservation already exists for this deal.');
+      return;
+    }
+
+    const paymentDeadline = new Date(
+      `${reservationDeadline}T17:00:00`,
+    ).toISOString();
+    const expiresAt = new Date(reservationExpiresAt).toISOString();
+    const depositRequired = Number(reservationDeposit || 0);
+
+    if (Number.isNaN(new Date(paymentDeadline).getTime())) {
+      setNegotiationNotice('Choose a valid payment deadline.');
+      return;
+    }
+
+    if (Number.isNaN(new Date(expiresAt).getTime())) {
+      setNegotiationNotice('Choose a valid reservation expiration.');
+      return;
+    }
+
+    if (depositRequired < 0) {
+      setNegotiationNotice('Deposit cannot be negative.');
+      return;
+    }
+
+    setNegotiationBusy(true);
+    setNegotiationNotice('');
+
+    try {
+      await addRound(activeOffer.id, {
+        actorRole: 'owner',
+        action: 'accept',
+        amount: activeOffer.currentAmount,
+        terms: activeOffer.paymentTerms || undefined,
+        message: 'Offer accepted and moved into reservation.',
+      });
+
+      await reserve(activeOffer.id, {
+        paymentDeadline,
+        depositRequired,
+        reservationExpiresAt: expiresAt,
+      });
+
+      if (conversation?.id) {
+        await addInternalNote(
+          conversation.id,
+          `Offer accepted at ${money(
+            activeOffer.currentAmount,
+          )}. Reservation created with ${money(
+            depositRequired,
+          )} deposit required.`,
+        );
+      }
+
+      await Promise.all([
+        refreshOffers(),
+        refreshClosing(),
+        refreshRevenue(),
+        refreshConversations(),
+      ]);
+
+      setNegotiationNotice(
+        'Offer accepted. Reservation and closing workflow created.',
+      );
+      setTab('closing');
+      setTimelineVersion(value => value + 1);
+    } catch (cause) {
+      setNegotiationNotice(
+        cause instanceof Error
+          ? cause.message
+          : 'Unable to accept and reserve this offer.',
+      );
+    } finally {
+      setNegotiationBusy(false);
+    }
+  }
+
   async function requestOwnerApproval() {
+    if (dealLocked) return;
     if (!activeOffer || !opportunity) {
       setNegotiationNotice('No active offer is available for approval.');
       return;
@@ -831,6 +931,7 @@ export default function OpportunityWorkspace() {
 
 
   async function recordClosingDeposit() {
+    if (dealLocked) return;
     if (!reservation) {
       setClosingNotice('No active reservation is linked to this opportunity.');
       return;
@@ -919,13 +1020,20 @@ export default function OpportunityWorkspace() {
         );
       }
 
+      if (opportunity) {
+        await moveAgency(opportunity.agencyId, 'closed_won');
+      }
+
       await Promise.all([
         refreshClosing(),
         refreshRevenue(),
         refreshConversations(),
+        refreshPipeline(),
       ]);
 
-      setClosingNotice('Sale closed and revenue records refreshed.');
+      setClosingNotice(
+        'Sale closed. Portfolio, revenue and pipeline were updated automatically.',
+      );
       setTimelineVersion(value => value + 1);
     } catch (cause) {
       setClosingNotice(
@@ -937,6 +1045,7 @@ export default function OpportunityWorkspace() {
   }
 
   async function releaseClosingReservation() {
+    if (dealLocked) return;
     if (!reservation) {
       setClosingNotice('No active reservation is linked to this opportunity.');
       return;
@@ -997,7 +1106,7 @@ export default function OpportunityWorkspace() {
     const link = document.createElement('a');
 
     link.href = url;
-    link.download = `${(agency?.name ?? 'deal').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-deal-timeline.csv`;
+    link.download = `${(agency ? agency.name : 'agency').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-deal-timeline.csv`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -1021,7 +1130,7 @@ export default function OpportunityWorkspace() {
             <Pill tone="blue">{stageLabel(opportunity.stage)}</Pill>
           </div>
           <p className="mt-3 text-sm font-semibold text-blue-600">
-            Timeline Intelligence Engine · v2.1.0
+            Lifecycle Automation Engine · v2.2.0
           </p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">
             {agency.name}
@@ -1131,7 +1240,16 @@ export default function OpportunityWorkspace() {
                 onCounterAmount={setCounterAmount}
                 onCounterTerms={setCounterTerms}
                 onCounterMessage={setCounterMessage}
+                reservation={reservation}
+                dealLocked={dealLocked}
+                reservationDeadline={reservationDeadline}
+                reservationExpiresAt={reservationExpiresAt}
+                reservationDeposit={reservationDeposit}
+                onReservationDeadline={setReservationDeadline}
+                onReservationExpiresAt={setReservationExpiresAt}
+                onReservationDeposit={setReservationDeposit}
                 onAction={addNegotiationRound}
+                onAcceptAndReserve={acceptOfferAndCreateReservation}
                 onRequestApproval={requestOwnerApproval}
               />
             )}
@@ -1153,6 +1271,7 @@ export default function OpportunityWorkspace() {
                 notes={closingNotes}
                 busy={closingBusy}
                 notice={closingNotice}
+                dealLocked={dealLocked}
                 onDepositAmount={setDepositAmount}
                 onBalanceAmount={setBalanceAmount}
                 onPaymentMethod={setPaymentMethod}
@@ -1305,7 +1424,7 @@ export default function OpportunityWorkspace() {
 
               <PrimaryButton
                 className="w-full"
-                disabled={workflowBusy || !followUpAt}
+                disabled={dealLocked || workflowBusy || !followUpAt}
                 onClick={() => void scheduleFollowUp()}
               >
                 <CalendarClock size={17} className="mr-2" />
@@ -1350,13 +1469,14 @@ export default function OpportunityWorkspace() {
             <p className="text-sm text-slate-500">Internal note</p>
             <textarea
               className="mt-4 min-h-28 w-full rounded-2xl border border-slate-200 p-4 text-sm outline-none focus:border-blue-500"
-              placeholder="Add context for the sales team..."
+              placeholder={dealLocked ? "Closed deals are read-only." : "Add context for the sales team..."}
               value={note}
+              disabled={dealLocked}
               onChange={event => setNote(event.target.value)}
             />
             <PrimaryButton
               className="mt-3 w-full"
-              disabled={savingNote || !note.trim()}
+              disabled={dealLocked || savingNote || !note.trim()}
               onClick={() => void saveInternalNote()}
             >
               <MessageSquare size={17} className="mr-2" />
@@ -1461,6 +1581,7 @@ function ClosingPanel({
   notes,
   busy,
   notice,
+  dealLocked,
   onDepositAmount,
   onBalanceAmount,
   onPaymentMethod,
@@ -1598,10 +1719,11 @@ function ClosingPanel({
             {profileRole === 'owner' ? 'Owner closing controls' : 'Closing status'}
           </p>
 
-          {profileRole !== 'owner' ? (
+          {profileRole !== 'owner' || dealLocked ? (
             <p className="mt-3 text-sm leading-6 text-slate-500">
-              Employees can monitor funding progress. Only the owner can record
-              money, release reservations, or close the sale.
+              {dealLocked
+                ? 'This deal is closed and read-only.'
+                : 'Employees can monitor funding progress. Only the owner can record money, release reservations, or close the sale.'}
             </p>
           ) : (
             <div className="mt-5 grid gap-3">
@@ -1716,10 +1838,19 @@ function NegotiationPanel({
   counterMessage,
   busy,
   notice,
+  reservation,
+  dealLocked,
+  reservationDeadline,
+  reservationExpiresAt,
+  reservationDeposit,
+  onReservationDeadline,
+  onReservationExpiresAt,
+  onReservationDeposit,
   onCounterAmount,
   onCounterTerms,
   onCounterMessage,
   onAction,
+  onAcceptAndReserve,
   onRequestApproval,
 }: any) {
   if (!offer) {
@@ -1807,7 +1938,13 @@ function NegotiationPanel({
         </div>
       </div>
 
-      {!['accepted', 'rejected', 'closed'].includes(offer.status) && (
+      {dealLocked && (
+        <div className="mt-7 rounded-2xl bg-slate-100 p-5 text-sm font-semibold text-slate-600">
+          This deal is closed and read-only.
+        </div>
+      )}
+
+      {!dealLocked && !['accepted', 'rejected', 'closed'].includes(offer.status) && (
         <div className="mt-7 rounded-2xl border border-slate-200 p-5">
           <p className="font-semibold">Record next negotiation action</p>
           <div className="mt-4 grid gap-3">
@@ -1843,13 +1980,62 @@ function NegotiationPanel({
               </SecondaryButton>
 
               {profileRole === 'owner' ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <SecondaryButton disabled={busy} onClick={() => void onAction('accept')}>
-                    Accept
-                  </SecondaryButton>
-                  <SecondaryButton disabled={busy} onClick={() => void onAction('reject')}>
-                    Reject
-                  </SecondaryButton>
+                <div className="sm:col-span-2 grid gap-3">
+                  {!reservation && (
+                    <div className="grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-3">
+                      <label className="text-xs font-semibold text-slate-500">
+                        Payment deadline
+                        <input
+                          type="date"
+                          className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                          value={reservationDeadline}
+                          onChange={event =>
+                            onReservationDeadline(event.target.value)
+                          }
+                        />
+                      </label>
+
+                      <label className="text-xs font-semibold text-slate-500">
+                        Reservation expires
+                        <input
+                          type="datetime-local"
+                          className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                          value={reservationExpiresAt}
+                          onChange={event =>
+                            onReservationExpiresAt(event.target.value)
+                          }
+                        />
+                      </label>
+
+                      <label className="text-xs font-semibold text-slate-500">
+                        Deposit required
+                        <input
+                          type="number"
+                          min="0"
+                          className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                          value={reservationDeposit}
+                          onChange={event =>
+                            onReservationDeposit(event.target.value)
+                          }
+                        />
+                      </label>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <PrimaryButton
+                      disabled={busy || Boolean(reservation)}
+                      onClick={() => void onAcceptAndReserve()}
+                    >
+                      {reservation ? 'Reservation created' : 'Accept & reserve'}
+                    </PrimaryButton>
+                    <SecondaryButton
+                      disabled={busy}
+                      onClick={() => void onAction('reject')}
+                    >
+                      Reject
+                    </SecondaryButton>
+                  </div>
                 </div>
               ) : (
                 <SecondaryButton
