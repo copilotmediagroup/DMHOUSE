@@ -18,6 +18,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Card, Pill, PrimaryButton, SecondaryButton } from '../../components/Primitives';
 import { usePortfolioStore } from '../../store/PortfolioStore';
 import type { PortfolioStatus } from '../../types/domain';
+import PortfolioFileControl from '../../components/portfolio/PortfolioFileControl';
 
 const money = (n: number) =>
   new Intl.NumberFormat('en-US', {
@@ -266,32 +267,7 @@ export default function PortfolioDetail() {
             </div>
           </Card>
 
-          <Card className="p-6 md:p-8">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <div
-                className={`grid h-14 w-14 place-items-center rounded-2xl ${
-                  p.file ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
-                }`}
-              >
-                {p.file ? <FileSpreadsheet /> : <XCircle />}
-              </div>
-              <div className="flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold">{p.file?.name || 'Masked CSV missing'}</p>
-                  <Pill tone={p.file ? 'success' : 'neutral'}>{p.file ? 'Present' : 'Missing'}</Pill>
-                </div>
-                <p className="mt-1 text-sm text-slate-500">
-                  {p.file
-                    ? `${Math.ceil(p.file.size / 1024)} KB · uploaded ${new Date(p.file.uploadedAt).toLocaleDateString()}`
-                    : 'Upload a file before moving to Ready.'}
-                </p>
-              </div>
-              <SecondaryButton onClick={download} disabled={!p.file}>
-                <Download className="mr-2" size={17} />
-                Test download
-              </SecondaryButton>
-            </div>
-          </Card>
+          <PortfolioFileControl portfolio={p}/>
         </div>
 
         <div className="space-y-6">
