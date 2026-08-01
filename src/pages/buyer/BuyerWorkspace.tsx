@@ -1,0 +1,10 @@
+import {useEffect,useState} from 'react';
+import {ArrowRight,Store} from 'lucide-react';
+import {Link} from 'react-router-dom';
+import {PrimaryButton} from '../../components/Primitives';
+import BuyerActionQueue from '../../components/buyer/BuyerActionQueue';
+import BuyerActivityFeed from '../../components/buyer/BuyerActivityFeed';
+import BuyerRelationshipCard from '../../components/buyer/BuyerRelationshipCard';
+import BuyerWorkspaceMetrics from '../../components/buyer/BuyerWorkspaceMetrics';
+import {useBuyerPortalStore,type BuyerWorkspaceSnapshot} from '../../store/BuyerPortalStore';
+export default function BuyerWorkspace(){const {loadWorkspace}=useBuyerPortalStore();const [data,setData]=useState<BuyerWorkspaceSnapshot|null>(null);const [error,setError]=useState('');useEffect(()=>{loadWorkspace().then(setData).catch(e=>setError(e instanceof Error?e.message:'Unable to load workspace'))},[loadWorkspace]);if(!data&&!error)return <div className="p-8">Loading buyer workspace…</div>;return <div className="p-5 lg:p-8"><div className="mx-auto max-w-7xl"><div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-bold tracking-[.2em] text-blue-600">BUYER DEAL WORKSPACE</p><h1 className="mt-2 text-3xl font-semibold">Welcome, {data?.buyer?.contact_name||'Buyer'}</h1><p className="mt-2 text-sm text-slate-500">Every transaction, document and released portfolio in one secure workspace.</p></div><Link to="/buyer/marketplace"><PrimaryButton><Store size={17} className="mr-2"/>Browse marketplace <ArrowRight size={16} className="ml-2"/></PrimaryButton></Link></div>{error&&<p className="mt-5 rounded-2xl bg-red-50 p-4 text-sm text-red-700">{error}</p>}{data&&<><div className="mt-7"><BuyerWorkspaceMetrics workspace={data}/></div><div className="mt-6 grid gap-6 xl:grid-cols-[1.35fr_.65fr]"><BuyerActionQueue deals={data.activeDeals}/><BuyerRelationshipCard workspace={data}/></div><div className="mt-6"><BuyerActivityFeed items={data.activity}/></div></>}</div></div>}
