@@ -8,6 +8,7 @@ import {
   CircleDollarSign,
   CreditCard,
   Clock3,
+  Download,
   FileText,
   Gauge,
   Gavel,
@@ -18,6 +19,7 @@ import {
   MessageSquare,
   Phone,
   RefreshCw,
+  Search,
   Target,
   TrendingUp,
 } from 'lucide-react';
@@ -36,7 +38,7 @@ type Tab = 'overview' | 'negotiation' | 'closing' | 'communications' | 'document
 
 type TimelineEvent = {
   id: string;
-  type: 'stage' | 'offer' | 'email' | 'call' | 'note' | 'follow_up' | 'system';
+  type: 'stage' | 'offer' | 'approval' | 'closing' | 'revenue' | 'email' | 'call' | 'note' | 'follow_up' | 'system';
   title: string;
   detail: string;
   occurredAt: string;
@@ -64,6 +66,7 @@ export default function OpportunityWorkspace() {
   const {
     reservations,
     sales: closedSales,
+    commissions: closingCommissions,
     employees: closingEmployees,
     recordDeposit,
     closeSale,
@@ -104,6 +107,11 @@ export default function OpportunityWorkspace() {
   const [commissionType, setCommissionType] = useState<'flat' | 'percentage'>('percentage');
   const [commissionValue, setCommissionValue] = useState('0');
   const [closingNotes, setClosingNotes] = useState('');
+  const [timelineSearch, setTimelineSearch] = useState('');
+  const [timelineFilter, setTimelineFilter] = useState<
+    'all' | TimelineEvent['type']
+  >('all');
+  const [expandedTimelineId, setExpandedTimelineId] = useState<string | null>(null);
 
   const opportunity = opportunities.find(item => item.id === opportunityId);
   const agency = agencies.find(item => item.id === opportunity?.agencyId);
@@ -136,6 +144,10 @@ export default function OpportunityWorkspace() {
     item =>
       item.agencyId === opportunity?.agencyId &&
       item.portfolioId === opportunity?.portfolioId,
+  );
+
+  const relatedCommissions = closingCommissions.filter(
+    item => item.saleId === closedSale?.id,
   );
 
   const conversationMessages = useMemo(
@@ -424,6 +436,102 @@ export default function OpportunityWorkspace() {
         }))
       : [];
 
+    const approvalEvents: TimelineEvent[] = requests
+      .filter(
+        request =>
+          request.dealId === opportunity.id ||
+          request.entityId === activeOffer?.id ||
+          request.agencyId === agency.id,
+      )
+      .map(request => ({
+        id: `approval-${request.id}`,
+        type: 'approval',
+        title:
+          request.status === 'pending'
+            ? 'Owner approval requested'
+            : `Approval ${stageLabel(request.status)}`,
+        detail: [
+          request.title,
+          request.requestedValue == null
+            ? ''
+            : `Requested ${money(request.requestedValue)}`,
+          request.approvedValue == null
+            ? ''
+            : `Approved ${money(request.approvedValue)}`,
+          request.ownerNotes || request.reason || '',
+        ]
+          .filter(Boolean)
+          .join(' · '),
+        occurredAt: request.decidedAt || request.updatedAt || request.createdAt,
+      }));
+
+    const closingEvents: TimelineEvent[] = [];
+
+    if (reservation) {
+      closingEvents.push({
+        id: `reservation-${reservation.id}`,
+        type: 'closing',
+        title: 'Reservation created',
+        detail: `${money(reservation.amount)} reserved for ${reservation.agencyName}.`,
+        occurredAt: reservation.createdAt,
+      });
+
+      if (reservation.depositReceivedAt) {
+        closingEvents.push({
+          id: `deposit-${reservation.id}`,
+          type: 'closing',
+          title: 'Deposit received',
+          detail: `${money(reservation.depositReceived)} received${
+            reservation.paymentMethod ? ` via ${reservation.paymentMethod}` : ''
+          }.`,
+          occurredAt: reservation.depositReceivedAt,
+        });
+      }
+
+      if (reservation.balanceReceivedAt) {
+        closingEvents.push({
+          id: `balance-${reservation.id}`,
+          type: 'closing',
+          title: 'Balance received',
+          detail: `${money(reservation.balanceReceived)} received${
+            reservation.paymentMethod ? ` via ${reservation.paymentMethod}` : ''
+          }.`,
+          occurredAt: reservation.balanceReceivedAt,
+        });
+      }
+    }
+
+    const revenueEvents: TimelineEvent[] = [];
+
+    if (closedSale) {
+      revenueEvents.push({
+        id: `sale-${closedSale.id}`,
+        type: 'revenue',
+        title: 'Sale closed',
+        detail: `${money(closedSale.salePrice)} sale · ${money(
+          closedSale.netRevenue,
+        )} net revenue.`,
+        occurredAt: closedSale.closedAt,
+        actor: closedSale.winningEmployeeName,
+      });
+    }
+
+    for (const commission of relatedCommissions) {
+      revenueEvents.push({
+        id: `commission-${commission.id}`,
+        type: 'revenue',
+        title: `Commission ${stageLabel(commission.status)}`,
+        detail: `${commission.employeeName} · ${money(commission.amount)}${
+          commission.rate == null ? '' : ` · ${commission.rate}%`
+        }`,
+        occurredAt:
+          commission.paidAt ||
+          commission.approvedAt ||
+          commission.createdAt,
+        actor: commission.employeeName,
+      });
+    }
+
     const createdEvent: TimelineEvent = {
       id: `created-${opportunity.id}`,
       type: 'system',
@@ -432,17 +540,52 @@ export default function OpportunityWorkspace() {
       occurredAt: opportunity.createdAt,
     };
 
-    return [createdEvent, ...stageEvents, ...offerEvents, ...activityEvents, ...messageEvents].sort(
+    return [
+      createdEvent,
+      ...stageEvents,
+      ...offerEvents,
+      ...approvalEvents,
+      ...closingEvents,
+      ...revenueEvents,
+      ...activityEvents,
+      ...messageEvents,
+    ].sort(
       (first, second) =>
         new Date(second.occurredAt).getTime() -
         new Date(first.occurredAt).getTime(),
     );
-  }, [activeOffer, agency, conversationMessages, historyRows, opportunity]);
+  }, [
+    activeOffer,
+    agency,
+    closedSale,
+    conversationMessages,
+    historyRows,
+    opportunity,
+    relatedCommissions,
+    requests,
+    reservation,
+  ]);
+
+  const filteredTimeline = useMemo(() => {
+    const query = timelineSearch.trim().toLowerCase();
+
+    return timeline.filter(event => {
+      const matchesFilter =
+        timelineFilter === 'all' || event.type === timelineFilter;
+      const matchesSearch =
+        !query ||
+        event.title.toLowerCase().includes(query) ||
+        event.detail.toLowerCase().includes(query) ||
+        (event.actor || '').toLowerCase().includes(query);
+
+      return matchesFilter && matchesSearch;
+    });
+  }, [timeline, timelineFilter, timelineSearch]);
 
   const groupedTimeline = useMemo(() => {
     const groups = new Map<string, TimelineEvent[]>();
 
-    for (const event of timeline) {
+    for (const event of filteredTimeline) {
       const date = new Date(event.occurredAt);
       const today = new Date();
       const yesterday = new Date();
@@ -457,7 +600,7 @@ export default function OpportunityWorkspace() {
     }
 
     return Array.from(groups.entries());
-  }, [timeline]);
+  }, [filteredTimeline]);
 
   if (!opportunity || !agency) {
     return (
@@ -833,6 +976,34 @@ export default function OpportunityWorkspace() {
     }
   }
 
+  function exportTimelineCsv() {
+    const escape = (value: string) => `"${value.replace(/"/g, '""')}"`;
+    const rows = [
+      ['Timestamp', 'Type', 'Actor', 'Action', 'Details'],
+      ...filteredTimeline.map(event => [
+        new Date(event.occurredAt).toISOString(),
+        event.type,
+        event.actor || '',
+        event.title,
+        event.detail,
+      ]),
+    ];
+
+    const csv = rows
+      .map(row => row.map(value => escape(String(value))).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = `${(agency?.name ?? 'deal').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-deal-timeline.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="mx-auto max-w-[1600px] p-5 md:p-8 lg:p-10">
       <Link
@@ -850,7 +1021,7 @@ export default function OpportunityWorkspace() {
             <Pill tone="blue">{stageLabel(opportunity.stage)}</Pill>
           </div>
           <p className="mt-3 text-sm font-semibold text-blue-600">
-            Closing Intelligence Engine · v2.0.0
+            Timeline Intelligence Engine · v2.1.0
           </p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">
             {agency.name}
@@ -1010,6 +1181,18 @@ export default function OpportunityWorkspace() {
                 groups={groupedTimeline}
                 loading={historyLoading}
                 error={historyError}
+                search={timelineSearch}
+                filter={timelineFilter}
+                expandedId={expandedTimelineId}
+                canExport={profile?.role === 'owner'}
+                total={timeline.length}
+                visible={filteredTimeline.length}
+                onSearch={setTimelineSearch}
+                onFilter={setTimelineFilter}
+                onToggle={id =>
+                  setExpandedTimelineId(current => (current === id ? null : id))
+                }
+                onExport={exportTimelineCsv}
               />
             )}
           </div>
@@ -1748,33 +1931,190 @@ function Tasks({ hasDecisionMaker, hasFollowUp, hasCloseDate, hasPortfolio }: an
   );
 }
 
-function Timeline({ groups, loading, error }: { groups: [string, TimelineEvent[]][]; loading: boolean; error: string }) {
-  if (loading) return <p className="text-sm text-slate-500">Loading timeline…</p>;
-  if (error) return <p className="text-sm text-red-700">{error}</p>;
-  if (!groups.length) return <p className="text-sm text-slate-500">No timeline activity recorded yet.</p>;
+function Timeline({
+  groups,
+  loading,
+  error,
+  search,
+  filter,
+  expandedId,
+  canExport,
+  total,
+  visible,
+  onSearch,
+  onFilter,
+  onToggle,
+  onExport,
+}: {
+  groups: [string, TimelineEvent[]][];
+  loading: boolean;
+  error: string;
+  search: string;
+  filter: 'all' | TimelineEvent['type'];
+  expandedId: string | null;
+  canExport: boolean;
+  total: number;
+  visible: number;
+  onSearch: (value: string) => void;
+  onFilter: (value: 'all' | TimelineEvent['type']) => void;
+  onToggle: (id: string) => void;
+  onExport: () => void;
+}) {
+  const filters: Array<{
+    value: 'all' | TimelineEvent['type'];
+    label: string;
+  }> = [
+    { value: 'all', label: 'All' },
+    { value: 'email', label: 'Emails' },
+    { value: 'call', label: 'Calls' },
+    { value: 'offer', label: 'Offers' },
+    { value: 'approval', label: 'Approvals' },
+    { value: 'closing', label: 'Closing' },
+    { value: 'revenue', label: 'Revenue' },
+    { value: 'system', label: 'System' },
+  ];
 
   return (
-    <div className="space-y-8">
-      {groups.map(([label, events]) => (
-        <section key={label}>
-          <p className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{label}</p>
-          <div className="relative space-y-5 border-l border-slate-200 pl-7">
-            {events.map(event => (
-              <div key={event.id} className="relative">
-                <span className="absolute -left-[33px] top-1 grid h-5 w-5 place-items-center rounded-full bg-white ring-1 ring-slate-200">
-                  <TimelineIcon type={event.type} compact />
-                </span>
-                <p className="text-sm font-semibold">{event.title}</p>
-                <p className="mt-1 text-sm leading-6 text-slate-500">{event.detail}</p>
-                <p className="mt-2 text-xs text-slate-400">
-                  {new Date(event.occurredAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                  {event.actor ? ` · ${event.actor}` : ''}
-                </p>
-              </div>
-            ))}
+    <div>
+      <div className="border-b border-slate-100 pb-6">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm text-slate-500">Permanent deal audit trail</p>
+            <h3 className="mt-1 text-xl font-semibold">Timeline intelligence</h3>
+            <p className="mt-2 text-xs text-slate-400">
+              Showing {visible} of {total} events
+            </p>
           </div>
-        </section>
-      ))}
+
+          {canExport && (
+            <SecondaryButton onClick={onExport} disabled={visible === 0}>
+              <Download size={16} className="mr-2" />
+              Export CSV
+            </SecondaryButton>
+          )}
+        </div>
+
+        <div className="relative mt-5">
+          <Search
+            size={17}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            className="w-full rounded-2xl border border-slate-200 py-3 pl-11 pr-4 text-sm outline-none focus:border-blue-500"
+            placeholder="Search deal history..."
+            value={search}
+            onChange={event => onSearch(event.target.value)}
+          />
+        </div>
+
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+          {filters.map(item => (
+            <button
+              key={item.value}
+              onClick={() => onFilter(item.value)}
+              className={`shrink-0 rounded-full px-3 py-2 text-xs font-semibold transition ${
+                filter === item.value
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="py-8 text-sm text-slate-500">Loading timeline…</p>
+      ) : error ? (
+        <p className="py-8 text-sm text-red-700">{error}</p>
+      ) : !groups.length ? (
+        <div className="grid min-h-56 place-items-center text-center">
+          <div>
+            <History className="mx-auto text-slate-300" size={32} />
+            <p className="mt-3 font-semibold">No matching events</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Change the filter or search phrase to view more history.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-7 space-y-8">
+          {groups.map(([label, events]) => (
+            <section key={label}>
+              <p className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">
+                {label}
+              </p>
+
+              <div className="relative space-y-4 border-l border-slate-200 pl-7">
+                {events.map(event => {
+                  const expanded = expandedId === event.id;
+
+                  return (
+                    <button
+                      key={event.id}
+                      type="button"
+                      onClick={() => onToggle(event.id)}
+                      className="relative block w-full rounded-2xl p-4 text-left transition hover:bg-slate-50"
+                    >
+                      <span className="absolute -left-[33px] top-5 grid h-5 w-5 place-items-center rounded-full bg-white ring-1 ring-slate-200">
+                        <TimelineIcon type={event.type} compact />
+                      </span>
+
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold">{event.title}</p>
+                            <Pill tone="neutral">{stageLabel(event.type)}</Pill>
+                          </div>
+
+                          <p
+                            className={`mt-2 text-sm leading-6 text-slate-500 ${
+                              expanded ? 'whitespace-pre-wrap' : 'line-clamp-2'
+                            }`}
+                          >
+                            {event.detail || 'No additional details.'}
+                          </p>
+
+                          {expanded && (
+                            <div className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 text-xs sm:grid-cols-2">
+                              <div>
+                                <p className="text-slate-400">Event ID</p>
+                                <p className="mt-1 break-all font-semibold text-slate-700">
+                                  {event.id}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-slate-400">Actor</p>
+                                <p className="mt-1 font-semibold text-slate-700">
+                                  {event.actor || 'System'}
+                                </p>
+                              </div>
+                              <div className="sm:col-span-2">
+                                <p className="text-slate-400">Exact timestamp</p>
+                                <p className="mt-1 font-semibold text-slate-700">
+                                  {new Date(event.occurredAt).toISOString()}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <p className="shrink-0 text-xs text-slate-400">
+                          {new Date(event.occurredAt).toLocaleTimeString([], {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1784,6 +2124,9 @@ function TimelineIcon({ type, compact = false }: { type: TimelineEvent['type']; 
   const className = compact ? 'text-blue-600' : 'mt-0.5 shrink-0 text-blue-600';
 
   if (type === 'offer') return <HandCoins size={size} className={className} />;
+  if (type === 'approval') return <Gavel size={size} className={className} />;
+  if (type === 'closing') return <Landmark size={size} className={className} />;
+  if (type === 'revenue') return <CircleDollarSign size={size} className={className} />;
   if (type === 'call') return <Phone size={size} className={className} />;
   if (type === 'email') return <Mail size={size} className={className} />;
   if (type === 'stage') return <TrendingUp size={size} className={className} />;
