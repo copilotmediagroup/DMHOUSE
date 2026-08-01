@@ -34,8 +34,11 @@ import { useNegotiationStore } from '../store/NegotiationStore';
 import { useRevenueStore } from '../store/RevenueStore';
 import { usePortfolioStore } from '../store/PortfolioStore';
 import BuyerRelationshipPanel from '../components/opportunity/BuyerRelationshipPanel';
+import DealRiskPanel from '../components/risk/DealRiskPanel';
+import {assessDealRisk} from '../engines/dealRisk';
+import {useTransactionAutomation} from '../store/TransactionAutomationStore';
 
-type Tab = 'overview' | 'buyer' | 'negotiation' | 'closing' | 'communications' | 'documents' | 'tasks' | 'history';
+type Tab = 'overview' | 'risk' | 'buyer' | 'negotiation' | 'closing' | 'communications' | 'documents' | 'tasks' | 'history';
 
 type TimelineEvent = {
   id: string;
@@ -78,6 +81,7 @@ export default function OpportunityWorkspace() {
   const { agencies } = useAgencyStore();
   const { conversations, messages, ensure, addInternalNote, setWorkflow, refresh: refreshConversations } = useConversationStore();
   const { portfolios, profile } = usePortfolioStore();
+  const { alerts } = useTransactionAutomation();
 
   const [tab, setTab] = useState<Tab>('overview');
   const [note, setNote] = useState('');
@@ -155,6 +159,16 @@ export default function OpportunityWorkspace() {
   );
 
   const dealLocked = Boolean(closedSale);
+
+  const riskAssessment = useMemo(() => opportunity ? assessDealRisk({
+    opportunity,
+    offer: activeOffer,
+    reservation,
+    approvals: requests.filter(item => item.agencyId === opportunity.agencyId || item.dealId === opportunity.id),
+    conversation,
+    agency,
+    alerts,
+  }) : null, [opportunity, activeOffer, reservation, requests, conversation, agency, alerts]);
 
   const relatedCommissions = closingCommissions.filter(
     item => item.saleId === closedSale?.id,
@@ -1193,6 +1207,7 @@ export default function OpportunityWorkspace() {
               {(
                 [
                   ['overview', 'Overview'],
+                  ['risk', 'Deal Risk'],
                   ['buyer', 'Buyer 360'],
                   ['negotiation', 'Negotiation'],
                   ['closing', 'Closing'],
@@ -1227,6 +1242,8 @@ export default function OpportunityWorkspace() {
                 timelineCount={timeline.length}
               />
             )}
+
+            {tab === 'risk' && riskAssessment && <DealRiskPanel assessment={riskAssessment} companyId={profile?.company_id} profileId={profile?.id} />}
 
             {tab === 'buyer' && <BuyerRelationshipPanel />}
 
