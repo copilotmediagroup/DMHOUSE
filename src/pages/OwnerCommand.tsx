@@ -1,68 +1,74 @@
-import { AlertTriangle, ArrowRight, BarChart3, BriefcaseBusiness, Building2, CircleDollarSign, Clock3, MailOpen, Megaphone, RefreshCw, Sparkles, TrendingUp, Users } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Card, PrimaryButton } from '../components/Primitives';
-import { supabase } from '../lib/supabase';
+import {RefreshCw} from 'lucide-react';
+import {useMemo} from 'react';
+import {PrimaryButton} from '../components/Primitives';
+import ExecutiveActivityFeed from '../components/executive/ExecutiveActivityFeed';
+import ExecutiveForecastPanel from '../components/executive/ExecutiveForecastPanel';
+import ExecutiveMetricGrid from '../components/executive/ExecutiveMetricGrid';
+import ExecutiveQueuePanel from '../components/executive/ExecutiveQueuePanel';
+import type {ExecutiveActivity,ExecutiveMetric,ExecutiveQueueItem,ForecastStage} from '../components/executive/types';
+import {useAgencyStore} from '../store/AgencyStore';
+import {useApprovalStore} from '../store/ApprovalStore';
+import {useClosingStore} from '../store/ClosingStore';
+import {useConversationStore} from '../store/ConversationStore';
+import {useNegotiationStore} from '../store/NegotiationStore';
+import {PIPELINE_STAGES,usePipelineStore} from '../store/PipelineStore';
+import {usePerformanceStore} from '../store/PerformanceStore';
+import {useRevenueStore} from '../store/RevenueStore';
+import {useTransactionAutomation} from '../store/TransactionAutomationStore';
 
-type PipelineStage={label:string;value:number;path:string};
-type AlertItem={id:string;severity:'high'|'medium'|'low';title:string;detail:string;path:string;createdAt:string};
-type Employee={id:string;name:string;outreach:number;replies:number;offers:number;sales:number;revenue:number};
-type Activity={id:number;action:string;entityType:string;actor:string;createdAt:string};
-type Dashboard={
- generatedAt:string;
- today:{newPortfolios:number;activeCampaigns:number;newBuyerReplies:number;interestedBuyers:number;negotiations:number;offersPending:number;closings:number;employeesActive:number};
- financials:{revenueMonth:number;revenueYear:number;projectedRevenue:number;projectedProfit:number;grossProfitMonth:number;pendingCommissions:number};
- marketing:{sent:number;opened:number;replied:number;negotiating:number;purchased:number};
- inventory:{draft:number;ready:number;active:number;negotiating:number;reserved:number;sold:number};
- pipeline:PipelineStage[]; alerts:AlertItem[]; employees:Employee[]; recentActivity:Activity[];
-};
-const empty:Dashboard={generatedAt:'',today:{newPortfolios:0,activeCampaigns:0,newBuyerReplies:0,interestedBuyers:0,negotiations:0,offersPending:0,closings:0,employeesActive:0},financials:{revenueMonth:0,revenueYear:0,projectedRevenue:0,projectedProfit:0,grossProfitMonth:0,pendingCommissions:0},marketing:{sent:0,opened:0,replied:0,negotiating:0,purchased:0},inventory:{draft:0,ready:0,active:0,negotiating:0,reserved:0,sold:0},pipeline:[],alerts:[],employees:[],recentActivity:[]};
-const money=(n=0)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n);
-const pct=(a:number,b:number)=>b?`${Math.round(a/b*100)}%`:'0%';
-const when=(v?:string)=>v?new Intl.DateTimeFormat('en-US',{dateStyle:'medium',timeStyle:'short'}).format(new Date(v)):'—';
-const label=(v:string)=>v.replace(/^dmh_/,'').replace(/_/g,' ').replace(/\b\w/g,(c:string)=>c.toUpperCase());
+const money=(n:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n);
+const title=(v:string)=>v.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+const dayMs=86400000;
+const startOfDay=(d=new Date())=>new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
+const isSince=(value:string|undefined,time:number)=>Boolean(value&&new Date(value).getTime()>=time);
+const daysUntil=(value?:string)=>value?Math.ceil((new Date(value).getTime()-Date.now())/dayMs):999;
 
 export default function OwnerCommand(){
- const [data,setData]=useState<Dashboard>(empty);const [loading,setLoading]=useState(true);const [error,setError]=useState('');const navigate=useNavigate();
- async function load(){setLoading(true);setError('');const {data:payload,error:e}=await supabase.rpc('dmh_executive_command_center');if(e)setError(e.message);else setData({...empty,...(payload as Dashboard)});setLoading(false)}
- useEffect(()=>{load();const onVisible=()=>document.visibilityState==='visible'&&load();document.addEventListener('visibilitychange',onVisible);return()=>document.removeEventListener('visibilitychange',onVisible)},[]);
- const maxPipeline=Math.max(1,...data.pipeline.map(x=>x.value));
- const recommendations=useMemo(()=>{
-  const items:{title:string;detail:string;path:string}[]=[];
-  const firstHigh=data.alerts.find(a=>a.severity==='high');
-  if(firstHigh)items.push({title:firstHigh.title,detail:firstHigh.detail,path:firstHigh.path});
-  if(data.today.newBuyerReplies>0)items.push({title:'Work today’s buyer replies',detail:`${data.today.newBuyerReplies} new repl${data.today.newBuyerReplies===1?'y':'ies'} arrived today.`,path:'/replies'});
-  if(data.today.activeCampaigns===0&&data.inventory.active>0)items.push({title:'Launch an active portfolio campaign',detail:'Active inventory is available but no campaign is currently running.',path:'/campaigns'});
-  if(data.today.offersPending>0)items.push({title:'Review pending offers',detail:`${data.today.offersPending} offer${data.today.offersPending===1?'':'s'} need an owner decision.`,path:'/negotiations'});
-  return items.slice(0,4);
- },[data]);
- return <div className="mx-auto max-w-[1700px] p-5 md:p-8 lg:p-10">
-  <header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between"><div><p className="text-sm font-semibold text-blue-600">Executive Command Center · v2.3.0</p><h2 className="mt-1 text-3xl font-semibold tracking-tight md:text-4xl">Good evening. Here is the business.</h2><p className="mt-2 text-slate-500">One live view of inventory, outreach, replies, negotiations, closings and revenue.</p></div><PrimaryButton onClick={load} disabled={loading}><RefreshCw size={17} className={`mr-2 ${loading?'animate-spin':''}`}/>Refresh command</PrimaryButton></header>
-  {error&&<div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}. Run migration 036 if the Executive Command Center has not been installed.</div>}
-  <section className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
-   <Metric icon={BriefcaseBusiness} label="New portfolios" value={data.today.newPortfolios} path="/portfolios"/><Metric icon={Megaphone} label="Active campaigns" value={data.today.activeCampaigns} path="/campaigns"/><Metric icon={MailOpen} label="New replies" value={data.today.newBuyerReplies} path="/replies"/><Metric icon={Users} label="Interested buyers" value={data.today.interestedBuyers} path="/replies"/><Metric icon={TrendingUp} label="Negotiations" value={data.today.negotiations} path="/negotiations"/><Metric icon={CircleDollarSign} label="Offers pending" value={data.today.offersPending} path="/negotiations"/><Metric icon={Clock3} label="Closings" value={data.today.closings} path="/closings"/><Metric icon={Building2} label="Active employees" value={data.today.employeesActive} path="/employees"/>
-  </section>
-  <section className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
-   <Money label="Revenue this month" value={data.financials.revenueMonth}/><Money label="Gross profit this month" value={data.financials.grossProfitMonth}/><Money label="Projected revenue" value={data.financials.projectedRevenue}/><Money label="Projected profit" value={data.financials.projectedProfit}/><Money label="Revenue this year" value={data.financials.revenueYear}/><Money label="Pending commissions" value={data.financials.pendingCommissions}/>
-  </section>
-  <section className="mt-7 grid gap-6 xl:grid-cols-[1.35fr_.65fr]">
-   <Card className="p-6 md:p-7"><div className="flex items-center justify-between"><div><p className="text-sm text-slate-500">Revenue lifecycle</p><h3 className="mt-1 text-xl font-semibold">Live pipeline</h3></div><TrendingUp className="text-blue-600"/></div><div className="mt-6 grid gap-3 md:grid-cols-2">{data.pipeline.map((stage,i)=><button key={stage.label} onClick={()=>navigate(stage.path)} className="group rounded-2xl border border-slate-100 p-4 text-left transition hover:border-blue-200 hover:bg-blue-50/40"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><span className="grid h-8 w-8 place-items-center rounded-full bg-slate-950 text-xs font-semibold text-white">{i+1}</span><span className="font-semibold">{stage.label}</span></div><span className="text-xl font-semibold">{stage.value}</span></div><div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-600" style={{width:`${Math.max(5,stage.value/maxPipeline*100)}%`}}/></div></button>)}</div></Card>
-   <Card className="overflow-hidden"><div className="border-b border-slate-100 p-6"><div className="flex items-center gap-2"><Sparkles size={18} className="text-blue-600"/><p className="text-sm font-semibold text-blue-600">Executive Assistant</p></div><h3 className="mt-2 text-xl font-semibold">Recommended actions</h3></div><div className="divide-y divide-slate-100">{recommendations.length?recommendations.map((r,i)=><button key={i} onClick={()=>navigate(r.path)} className="flex w-full items-start justify-between gap-4 p-5 text-left hover:bg-slate-50"><div><p className="font-semibold">{r.title}</p><p className="mt-1 text-sm leading-6 text-slate-500">{r.detail}</p></div><ArrowRight size={18} className="mt-1 shrink-0 text-slate-300"/></button>):<div className="p-6"><p className="font-semibold">No urgent recommendation</p><p className="mt-1 text-sm text-slate-500">The current action queues are clear.</p></div>}</div></Card>
-  </section>
-  <section className="mt-7 grid gap-6 xl:grid-cols-3">
-   <Card className="p-6"><p className="text-sm text-slate-500">Marketing performance</p><h3 className="mt-1 text-xl font-semibold">Campaign conversion</h3><div className="mt-6 space-y-4"><Rate label="Open rate" value={pct(data.marketing.opened,data.marketing.sent)} detail={`${data.marketing.opened} of ${data.marketing.sent}`}/><Rate label="Reply rate" value={pct(data.marketing.replied,data.marketing.sent)} detail={`${data.marketing.replied} replies`}/><Rate label="Negotiation rate" value={pct(data.marketing.negotiating,data.marketing.sent)} detail={`${data.marketing.negotiating} negotiating`}/><Rate label="Purchase rate" value={pct(data.marketing.purchased,data.marketing.sent)} detail={`${data.marketing.purchased} purchased`}/></div></Card>
-   <Card className="p-6"><p className="text-sm text-slate-500">Inventory position</p><h3 className="mt-1 text-xl font-semibold">Portfolio status</h3><div className="mt-6 grid grid-cols-2 gap-3"><Inventory label="Draft" value={data.inventory.draft}/><Inventory label="Ready" value={data.inventory.ready}/><Inventory label="Active" value={data.inventory.active}/><Inventory label="Negotiating" value={data.inventory.negotiating}/><Inventory label="Reserved" value={data.inventory.reserved}/><Inventory label="Sold" value={data.inventory.sold}/></div></Card>
-   <Card className="overflow-hidden"><div className="border-b border-slate-100 p-6"><p className="text-sm text-slate-500">Immediate attention</p><h3 className="mt-1 text-xl font-semibold">Executive alerts</h3></div><div className="max-h-[390px] divide-y divide-slate-100 overflow-y-auto">{data.alerts.length?data.alerts.map(a=><button key={a.id} onClick={()=>navigate(a.path)} className="flex w-full gap-3 p-5 text-left hover:bg-slate-50"><div className={`mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-xl ${a.severity==='high'?'bg-red-50 text-red-600':'bg-amber-50 text-amber-600'}`}><AlertTriangle size={17}/></div><div><p className="font-semibold">{a.title}</p><p className="mt-1 text-sm leading-5 text-slate-500">{a.detail}</p><p className="mt-2 text-xs text-slate-400">{when(a.createdAt)}</p></div></button>):<div className="p-6 text-sm text-slate-500">No active executive alerts.</div>}</div></Card>
-  </section>
-  <section className="mt-7 grid gap-6 xl:grid-cols-[1.2fr_.8fr]">
-   <Card className="overflow-hidden"><div className="border-b border-slate-100 p-6"><p className="text-sm text-slate-500">Sales performance</p><h3 className="mt-1 text-xl font-semibold">Employee scorecard</h3></div>{data.employees.length?<div className="divide-y divide-slate-100">{data.employees.map(e=><div key={e.id} className="grid gap-4 p-5 md:grid-cols-[1.4fr_repeat(5,.65fr)]"><div><p className="font-semibold">{e.name}</p><p className="mt-1 text-xs text-slate-500">Current month</p></div><Mini label="Outreach" value={e.outreach}/><Mini label="Replies" value={e.replies}/><Mini label="Offers" value={e.offers}/><Mini label="Sales" value={e.sales}/><Mini label="Revenue" value={money(e.revenue)}/></div>)}</div>:<p className="p-6 text-sm text-slate-500">No active employee records.</p>}</Card>
-   <Card className="overflow-hidden"><div className="border-b border-slate-100 p-6"><p className="text-sm text-slate-500">Company timeline</p><h3 className="mt-1 text-xl font-semibold">Recent activity</h3></div><div className="max-h-[480px] divide-y divide-slate-100 overflow-y-auto">{data.recentActivity.length?data.recentActivity.map(a=><div key={a.id} className="p-5"><p className="text-sm font-semibold">{label(a.action)}</p><p className="mt-1 text-xs text-slate-500">{a.actor} · {a.entityType} · {when(a.createdAt)}</p></div>):<p className="p-6 text-sm text-slate-500">No recent activity.</p>}</div></Card>
-  </section>
-  <p className="mt-6 text-xs text-slate-400">Live Supabase snapshot {data.generatedAt?when(data.generatedAt):'not loaded'}.</p>
- </div>
+ const pipeline=usePipelineStore();const negotiation=useNegotiationStore();const approval=useApprovalStore();const closing=useClosingStore();const revenue=useRevenueStore();const performance=usePerformanceStore();const automation=useTransactionAutomation();const agency=useAgencyStore();const conversation=useConversationStore();
+ const loading=pipeline.loading||negotiation.loading||approval.loading||closing.loading||revenue.loading||performance.loading||automation.loading||agency.loading||conversation.loading;
+ const refresh=async()=>{await Promise.all([pipeline.refresh(),negotiation.refresh(),approval.refresh(),closing.refresh(),revenue.refresh(),performance.refresh(),automation.refresh(),agency.refresh(),conversation.refresh()])};
+ const vm=useMemo(()=>{
+  const today=startOfDay();const week=today-6*dayMs;const month=new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();
+  const openStages=new Set(PIPELINE_STAGES.filter(s=>!['closed_won','closed_lost'].includes(s)));
+  const activeDeals=pipeline.opportunities.filter(o=>openStages.has(o.stage));
+  const stalled=activeDeals.filter(o=>Date.now()-new Date(o.updatedAt).getTime()>7*dayMs);
+  const revenueToday=revenue.sales.filter(s=>isSince(s.closed_at,today)).reduce((sum,s)=>sum+s.sale_price,0);
+  const revenueWeek=revenue.sales.filter(s=>isSince(s.closed_at,week)).reduce((sum,s)=>sum+s.sale_price,0);
+  const revenueMonth=revenue.sales.filter(s=>isSince(s.closed_at,month)).reduce((sum,s)=>sum+s.sale_price,0);
+  const openOffers=negotiation.offers.filter(o=>!['accepted','rejected','expired','closed'].includes(o.status));
+  const closingQueue=closing.reservations.filter(r=>r.status==='active');
+  const pendingApprovals=approval.requests.filter(r=>r.status==='pending');
+  const expiring=closingQueue.filter(r=>daysUntil(r.reservationExpiresAt)<=3);
+  const followUps=agency.agencies.flatMap(a=>a.activities.filter(x=>x.followUpAt&&!x.completedAt&&new Date(x.followUpAt).getTime()>=today&&new Date(x.followUpAt).getTime()<today+dayMs).map(x=>({agency:a,activity:x})));
+  const critical=automation.alerts.filter(a=>a.severity==='critical'&&!a.resolved_at);
+  const buyerHealth=agency.agencies.length?Math.round(agency.agencies.reduce((sum,a)=>{const relationship=['qualified','portfolio_sent','negotiating','offer_submitted','closed'].includes(a.status)?85:['contacted','researching'].includes(a.status)?60:a.status==='new'?45:20;const engagement=Math.min(15,a.activities.length*2);return sum+Math.min(100,relationship+engagement)},0)/agency.agencies.length):0;
+  const totalPipeline=activeDeals.reduce((s,o)=>s+o.askingPrice,0);const weighted=activeDeals.reduce((s,o)=>s+o.askingPrice*(o.probability/100),0);
+  const metrics:ExecutiveMetric[]=[
+   {label:'Revenue today',value:money(revenueToday),detail:'Closed sales since midnight',path:'/revenue',tone:'success'},
+   {label:'Revenue this week',value:money(revenueWeek),detail:'Last seven calendar days',path:'/revenue'},
+   {label:'Revenue this month',value:money(revenueMonth),detail:`${revenue.sales.filter(s=>isSince(s.closed_at,month)).length} closed transactions`,path:'/revenue'},
+   {label:'Active deals',value:String(activeDeals.length),detail:`${money(totalPipeline)} open pipeline`,path:'/pipeline'},
+   {label:'Stalled deals',value:String(stalled.length),detail:'No movement for seven days',path:'/pipeline',tone:stalled.length?'warning':'success'},
+   {label:'Buyer health average',value:`${buyerHealth}%`,detail:`Across ${agency.agencies.length} buyer relationships`,path:'/agencies',tone:buyerHealth<50?'warning':'default'},
+   {label:'Open negotiations',value:String(openOffers.length),detail:`${money(openOffers.reduce((s,o)=>s+o.currentAmount,0))} currently offered`,path:'/negotiations'},
+   {label:'Closing queue',value:String(closingQueue.length),detail:`${money(closingQueue.reduce((s,r)=>s+r.amount,0))} reserved`,path:'/closings'},
+   {label:'Pending approvals',value:String(pendingApprovals.length),detail:'Owner decisions required',path:'/approvals',tone:pendingApprovals.length?'warning':'success'},
+   {label:'Reservations expiring',value:String(expiring.length),detail:'Within the next 72 hours',path:'/closings',tone:expiring.length?'danger':'success'},
+   {label:'Follow-ups due today',value:String(followUps.length),detail:'Buyer actions scheduled today',path:'/follow-ups',tone:followUps.length?'warning':'success'},
+   {label:'Critical alerts',value:String(critical.length),detail:'Unresolved executive exceptions',path:'/automation',tone:critical.length?'danger':'success'}
+  ];
+  const stages:ForecastStage[]=PIPELINE_STAGES.filter(s=>openStages.has(s)).map(stage=>{const deals=activeDeals.filter(o=>o.stage===stage);return{label:title(stage),count:deals.length,value:deals.reduce((n,o)=>n+o.askingPrice,0),weightedValue:deals.reduce((n,o)=>n+o.askingPrice*(o.probability/100),0)}}).filter(s=>s.count);
+  const approvals:ExecutiveQueueItem[]=pendingApprovals.map(r=>({id:r.id,title:r.title,detail:r.reason||r.recommendation,meta:r.requestType.replace(/_/g,' '),path:'/approvals',tone:'warning'}));
+  const risk:ExecutiveQueueItem[]=[...critical.map(a=>({id:a.id,title:a.title,detail:a.body||'Critical transaction alert',meta:'critical',path:a.action_path||'/automation',tone:'danger' as const})),...expiring.map(r=>({id:r.id,title:`${r.portfolioName} reservation`,detail:`${r.agencyName} · ${money(r.amount)}`,meta:`${Math.max(0,daysUntil(r.reservationExpiresAt))}d left`,path:'/closings',tone:'warning' as const})),...stalled.map(o=>({id:o.id,title:o.title,detail:`${money(o.askingPrice)} · ${title(o.stage)}`,meta:'stalled',path:`/pipeline/${o.id}`,tone:'warning' as const}))];
+  const leaderboard:ExecutiveQueueItem[]=performance.employees.slice(0,6).map(e=>({id:e.id,title:`#${e.rank} ${e.full_name}`,detail:`${e.sales_month} sales · ${money(e.pipeline_value)} pipeline`,meta:money(e.revenue_month),path:'/analytics',tone:e.rank===1?'success':'default'}));
+  const activity:ExecutiveActivity[]=[
+   ...automation.alerts.map(a=>({id:`alert-${a.id}`,title:a.title,detail:a.body||title(a.type),occurredAt:a.created_at,path:a.action_path||'/automation'})),
+   ...negotiation.offers.map(o=>({id:`offer-${o.id}`,title:`Negotiation with ${o.agencyName}`,detail:`${o.portfolioName} · ${money(o.currentAmount)} · ${title(o.status)}`,occurredAt:o.updatedAt,path:'/negotiations'})),
+   ...pipeline.opportunities.map(o=>({id:`deal-${o.id}`,title:o.title,detail:`Moved through ${title(o.stage)} · ${money(o.askingPrice)}`,occurredAt:o.updatedAt,path:`/pipeline/${o.id}`})),
+   ...agency.agencies.flatMap(a=>a.activities.map(x=>({id:`activity-${x.id}`,title:`${a.name}: ${x.disposition}`,detail:x.notes||x.subject||title(x.type),occurredAt:x.occurredAt,path:`/agencies/${a.id}`}))),
+   ...conversation.messages.map(m=>({id:`message-${m.id}`,title:m.direction==='inbound'?'Buyer reply received':'Company message sent',detail:m.subject||m.body.slice(0,100),occurredAt:m.createdAt,path:'/conversations'}))
+  ].sort((a,b)=>new Date(b.occurredAt).getTime()-new Date(a.occurredAt).getTime());
+  return{metrics,stages,totalPipeline,weighted,approvals,risk,leaderboard,activity};
+ },[pipeline.opportunities,negotiation.offers,approval.requests,closing.reservations,revenue.sales,performance.employees,automation.alerts,agency.agencies,conversation.messages]);
+ return <div className="mx-auto max-w-[1800px] p-5 md:p-8 lg:p-10"><header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between"><div><p className="text-sm font-semibold text-blue-600">Executive Command Center · v2.5.0</p><h2 className="mt-1 text-3xl font-semibold tracking-tight md:text-4xl">The entire company, one screen.</h2><p className="mt-2 max-w-3xl text-slate-500">Revenue, pipeline, buyer health, employee performance, transaction risk and today’s operating queues—derived from the existing Sales OS engines.</p></div><PrimaryButton onClick={()=>void refresh()} disabled={loading}><RefreshCw size={17} className={`mr-2 ${loading?'animate-spin':''}`}/>Refresh command</PrimaryButton></header><div className="mt-7"><ExecutiveMetricGrid metrics={vm.metrics}/></div><section className="mt-7 grid gap-6 xl:grid-cols-[1.35fr_.65fr]"><ExecutiveForecastPanel stages={vm.stages} total={vm.totalPipeline} weighted={vm.weighted}/><ExecutiveQueuePanel title="Employee leaderboard" eyebrow="Sales performance" items={vm.leaderboard} emptyText="No employee performance has been recorded yet."/></section><section className="mt-7 grid gap-6 xl:grid-cols-3"><ExecutiveQueuePanel title="Approval queue" eyebrow="Owner decisions" items={vm.approvals} emptyText="No approvals are waiting."/><ExecutiveQueuePanel title="Critical operating queue" eyebrow="Risk and deadlines" items={vm.risk} emptyText="No critical risks or stalled transactions."/><ExecutiveActivityFeed items={vm.activity}/></section></div>
 }
-function Metric({icon:Icon,label,value,path}:{icon:any;label:string;value:number;path:string}){const nav=useNavigate();return <button onClick={()=>nav(path)} className="rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200"><Icon size={18} className="text-blue-600"/><p className="mt-4 text-2xl font-semibold">{value}</p><p className="mt-1 text-xs text-slate-500">{label}</p></button>}
-function Money({label,value}:{label:string;value:number}){return <Card className="p-5"><CircleDollarSign size={18} className="text-blue-600"/><p className="mt-4 text-2xl font-semibold">{money(value)}</p><p className="mt-1 text-xs text-slate-500">{label}</p></Card>}
-function Rate({label,value,detail}:{label:string;value:string;detail:string}){return <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3"><div><p className="text-sm font-semibold">{label}</p><p className="text-xs text-slate-500">{detail}</p></div><p className="text-xl font-semibold">{value}</p></div>}
-function Inventory({label,value}:{label:string;value:number}){return <div className="rounded-2xl bg-slate-50 p-4"><p className="text-2xl font-semibold">{value}</p><p className="mt-1 text-xs text-slate-500">{label}</p></div>}
-function Mini({label,value}:{label:string;value:string|number}){return <div><p className="text-xs text-slate-400">{label}</p><p className="mt-1 text-sm font-semibold">{value}</p></div>}
