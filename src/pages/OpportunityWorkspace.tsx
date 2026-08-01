@@ -33,8 +33,9 @@ import { usePipelineStore } from '../store/PipelineStore';
 import { useNegotiationStore } from '../store/NegotiationStore';
 import { useRevenueStore } from '../store/RevenueStore';
 import { usePortfolioStore } from '../store/PortfolioStore';
+import BuyerRelationshipPanel from '../components/opportunity/BuyerRelationshipPanel';
 
-type Tab = 'overview' | 'negotiation' | 'closing' | 'communications' | 'documents' | 'tasks' | 'history';
+type Tab = 'overview' | 'buyer' | 'negotiation' | 'closing' | 'communications' | 'documents' | 'tasks' | 'history';
 
 type TimelineEvent = {
   id: string;
@@ -1192,6 +1193,7 @@ export default function OpportunityWorkspace() {
               {(
                 [
                   ['overview', 'Overview'],
+                  ['buyer', 'Buyer 360'],
                   ['negotiation', 'Negotiation'],
                   ['closing', 'Closing'],
                   ['communications', 'Communications'],
@@ -1225,6 +1227,8 @@ export default function OpportunityWorkspace() {
                 timelineCount={timeline.length}
               />
             )}
+
+            {tab === 'buyer' && <BuyerRelationshipPanel />}
 
             {tab === 'negotiation' && (
               <NegotiationPanel
