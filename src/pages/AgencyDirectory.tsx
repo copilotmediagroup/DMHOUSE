@@ -1,4 +1,4 @@
-import { Building2, CalendarClock, ChevronRight, Mail, Phone, Plus, Search, Sparkles } from 'lucide-react';
+import { Building2, CalendarClock, ChevronRight, Mail, Phone, Plus, Search, Sparkles, Trash2, ArchiveX } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, Pill, PrimaryButton, SecondaryButton } from '../components/Primitives';
@@ -24,11 +24,12 @@ function nextFollowUp(agency: Agency) {
 }
 
 export default function AgencyDirectory() {
-  const { agencies, currentEmployee } = useAgencyStore();
+  const { agencies, currentEmployee, release, clearInventory } = useAgencyStore();
   const { opportunities } = usePipelineStore();
   const { role } = usePortfolioStore();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const [working, setWorking] = useState('');
 
   const base = role === 'owner' ? '/agencies' : '/employee/agencies';
   const owned = role === 'owner' ? agencies : agencies.filter((agency) => agency.ownerEmployeeId === currentEmployee.id);
@@ -64,9 +65,7 @@ export default function AgencyDirectory() {
           <p className="mt-2 max-w-2xl text-slate-500">See who needs attention, what happened last, and which relationship should move next.</p>
         </div>
         {role === 'employee' && (
-          <Link to="/employee/prospect">
-            <PrimaryButton><Plus className="mr-2" size={17} />Find agencies</PrimaryButton>
-          </Link>
+          <div className="flex flex-wrap gap-2"><Link to="/employee/agencies/new"><PrimaryButton><Plus className="mr-2" size={17}/>Add agency</PrimaryButton></Link><Link to="/employee/prospect"><SecondaryButton><Search className="mr-2" size={17}/>Search Maps</SecondaryButton></Link><SecondaryButton disabled={!owned.length||working==='all'} onClick={async()=>{if(!confirm(`Remove all ${owned.length} agencies from your inventory? The owner keeps every record, note, contact and conversation.`))return;setWorking('all');await clearInventory();setWorking('')}}><ArchiveX className="mr-2" size={17}/>{working==='all'?'Clearing…':'Clear inventory'}</SecondaryButton></div>
         )}
       </header>
 
@@ -124,7 +123,7 @@ export default function AgencyDirectory() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link to={`${base}/${agency.id}`} className="truncate text-lg font-semibold text-slate-950 hover:text-blue-600">{agency.name}</Link>
-                      <Pill tone={agency.status === 'qualified' ? 'success' : agency.status === 'new' ? 'blue' : 'neutral'}>{agency.status.replace(/_/g, ' ')}</Pill>
+                      {agency.isTest&&<Pill tone="warning">TEST</Pill>}<Pill tone={agency.status === 'qualified' ? 'success' : agency.status === 'new' ? 'blue' : 'neutral'}>{agency.status.replace(/_/g, ' ')}</Pill>
                     </div>
                     <p className="mt-1 text-sm text-slate-500">{[agency.city, agency.state].filter(Boolean).join(', ') || 'Location not listed'}</p>
                   </div>
@@ -142,7 +141,7 @@ export default function AgencyDirectory() {
               <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-4 md:px-6">
                 {agency.phone && <a href={`tel:${agency.phone.replace(/[^+\d]/g, '')}`}><SecondaryButton className="min-h-9 px-3 py-2"><Phone className="mr-2" size={15} />Call</SecondaryButton></a>}
                 {agency.generalEmail && <a href={`mailto:${agency.generalEmail}`}><SecondaryButton className="min-h-9 px-3 py-2"><Mail className="mr-2" size={15} />Email</SecondaryButton></a>}
-                <Link to={`${base}/${agency.id}`} className="ml-auto"><PrimaryButton className="min-h-9 px-4 py-2"><Sparkles className="mr-2" size={15} />Work relationship</PrimaryButton></Link>
+                {role==='employee'&&<SecondaryButton disabled={working===agency.id} onClick={async()=>{if(!confirm(`Remove ${agency.name} from your inventory? The owner will keep the permanent company record and history.`))return;setWorking(agency.id);await release(agency.id);setWorking('')}} className="ml-auto min-h-9 px-3 py-2 text-red-600"><Trash2 className="mr-2" size={15}/>{working===agency.id?'Removing…':'Remove'}</SecondaryButton>}<Link to={`${base}/${agency.id}`} className={role==='employee'?'':'ml-auto'}><PrimaryButton className="min-h-9 px-4 py-2"><Sparkles className="mr-2" size={15} />Work relationship</PrimaryButton></Link>
               </div>
             </Card>
           );

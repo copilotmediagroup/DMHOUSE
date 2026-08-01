@@ -4,13 +4,15 @@ import {
   ExternalLink,
   Loader2,
   MapPinned,
+  Plus,
   Search,
   ShieldCheck,
 } from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card, Pill, PrimaryButton, SecondaryButton } from '../../components/Primitives';
 import { supabase } from '../../lib/supabase';
+import { useAgencyStore } from '../../store/AgencyStore';
 
 type Result = {
   id: string;
@@ -43,6 +45,7 @@ const searchTemplates = [
 
 export default function ProspectMode() {
   const navigate = useNavigate();
+  const { refresh } = useAgencyStore();
   const [query, setQuery] = useState('Debt collection agency');
   const [location, setLocation] = useState('Florida');
   const [limit, setLimit] = useState(25);
@@ -125,6 +128,11 @@ export default function ProspectMode() {
 
     const selectedCount = selected.size;
     setSelected(new Set());
+
+    if (successfulImports > 0) {
+      await refresh();
+    }
+
     setImporting(false);
 
     if (successfulImports === 1 && selectedCount === 1 && firstAgencyId) {
@@ -144,7 +152,7 @@ export default function ProspectMode() {
             Search for collection agencies and debt buyers, review the live business results, then import only the prospects you want into DMH Sales OS.
           </p>
         </div>
-        <Pill tone="blue">Employee access only</Pill>
+        <div className="flex gap-2"><Link to="/employee/agencies/new"><SecondaryButton><Plus className="mr-2" size={16}/>Add manually</SecondaryButton></Link><Pill tone="blue">Employee access only</Pill></div>
       </header>
 
       <Card className="overflow-hidden">
