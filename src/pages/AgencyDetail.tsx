@@ -36,9 +36,16 @@ export default function AgencyDetail(){
   const [panel,setPanel]=useState<'contact'|'activity'|null>(null);
   const [activityKind,setActivityKind]=useState<'call'|'email'|'note'>('call');
 
-  if(!agency)return <div className="p-10">Agency not found.</div>;
+  const timeline=useMemo(()=>{
+    if(!agency)return [];
+    const imported:AgencyActivity={id:`imported-${agency.id}`,type:'note',disposition:'Agency imported',notes:'Added to My Agencies from prospect discovery.',occurredAt:agency.createdAt,employeeName:agency.ownerEmployeeName};
+    return [imported,...agency.activities].sort((a,b)=>new Date(b.occurredAt).getTime()-new Date(a.occurredAt).getTime());
+  },[agency]);
+
 
   const back=role==='owner'?'/agencies':'/employee/agencies';
+  if(!agency)return <div className="p-10">Agency not found.</div>;
+
   const websiteHref=externalUrl(agency.website);
   const fullLocation=agency.address||[agency.city,agency.state].filter(Boolean).join(', ');
   const mapsHref=agency.sourceUrl?externalUrl(agency.sourceUrl):(fullLocation?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullLocation)}`:'');
@@ -57,10 +64,6 @@ export default function AgencyDetail(){
   const relationshipScore=scoreItems.reduce((total,item,index)=>total+(item.complete?weights[index]:0),0);
   const scoreLabel=relationshipScore>=80?'Strong':relationshipScore>=55?'Developing':'Building';
 
-  const timeline=useMemo(()=>{
-    const imported:AgencyActivity={id:`imported-${agency.id}`,type:'note',disposition:'Agency imported',notes:'Added to My Agencies from prospect discovery.',occurredAt:agency.createdAt,employeeName:agency.ownerEmployeeName};
-    return [imported,...agency.activities].sort((a,b)=>new Date(b.occurredAt).getTime()-new Date(a.occurredAt).getTime());
-  },[agency]);
 
   return <div className="mx-auto max-w-[1380px] p-5 md:p-8 lg:p-10">
     <Link to={back} className="mb-6 inline-flex items-center text-sm font-semibold text-slate-500 hover:text-slate-800"><ArrowLeft className="mr-2" size={17}/>Agency directory</Link>
