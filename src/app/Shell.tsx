@@ -1,9 +1,215 @@
-import { ArrowRightLeft, BarChart3, BriefcaseBusiness, Building2, CircleDollarSign, ClipboardList, Landmark, LayoutDashboard, Columns3, Mail, Menu, MessageSquareText, Phone, Plus, Send, Settings, ShieldCheck, Users, X, Search, Handshake, Target, Megaphone, Inbox, FileWarning, BadgeCheck, Store, LockKeyhole, FileSignature, BellRing, Workflow, FolderOpen, ShieldAlert, ListChecks, RotateCcw } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import {
+  ArrowRightLeft,
+  BarChart3,
+  BellRing,
+  BriefcaseBusiness,
+  Building2,
+  ChevronDown,
+  CircleDollarSign,
+  ClipboardList,
+  Columns3,
+  FileSignature,
+  FileWarning,
+  FolderOpen,
+  Handshake,
+  Inbox,
+  Landmark,
+  LayoutDashboard,
+  ListChecks,
+  LockKeyhole,
+  Mail,
+  Menu,
+  MessageSquareText,
+  Phone,
+  Plus,
+  RotateCcw,
+  Search,
+  Send,
+  Settings,
+  ShieldAlert,
+  ShieldCheck,
+  Store,
+  Target,
+  Users,
+  Workflow,
+  X,
+} from 'lucide-react';
+import { useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { usePortfolioStore } from '../store/PortfolioStore';
 import { supabase } from '../lib/supabase';
-const ownerNav=[['Command','/',LayoutDashboard],['Portfolios','/portfolios',BriefcaseBusiness],['Create Portfolio','/portfolios/new',Plus],['Pipeline','/pipeline',Columns3],['Forecast','/forecast',BarChart3],['Outreach','/outreach',Phone],['Conversations','/conversations',MessageSquareText],['Follow-Up Intelligence','/follow-ups',ClipboardList],['Distributions','/distributions',Send],['Email Templates','/templates',Mail],['Portfolio Matching','/matching',Target],['Campaigns','/campaigns',Megaphone],['Reply Command','/replies',Inbox],['AS-IS Review','/as-is-review',FileWarning],['Approvals','/approvals',BadgeCheck],['Revenue','/revenue',CircleDollarSign],['Deals','/deals',Handshake],['Negotiations','/negotiations',CircleDollarSign],['Closings','/closings',Landmark],['Agencies','/agencies',Building2],['Employees','/employees',Users],['Assignments','/assignments',ArrowRightLeft],['Performance','/analytics',BarChart3],['Buyer Portal','/buyers',Store],['Automation Center','/automation',Workflow],['Deal Risk','/risk',ShieldAlert],['Deal Execution','/execution',ListChecks],['Deal Recovery','/recovery',RotateCcw],['Agreement Sandbox','/developer/agreements',FileSignature],['Audit','/audit',ShieldCheck],['Settings','/settings',Settings]] as const;
-const buyerNav=[['Workspace','/buyer',LayoutDashboard],['Marketplace','/buyer/marketplace',Store],['Portfolio Library','/buyer/library',FolderOpen],['Alerts','/buyer/alerts',BellRing]] as const;
-const employeeNav=[['Today','/employee',LayoutDashboard],['Active Portfolio','/employee/portfolio',BriefcaseBusiness],['Pipeline','/employee/pipeline',Columns3],['Find Agencies','/employee/prospect',Search],['Contact Buyer','/employee/outreach',MessageSquareText],['Campaign Assignments','/employee/campaigns',Megaphone],['Buyer Replies','/employee/replies',Inbox],['Approval Requests','/employee/approvals',BadgeCheck],['Conversations','/employee/conversations',Mail],['Follow-Up Intelligence','/employee/follow-up-intelligence',ClipboardList],['Record Distribution','/employee/distribute',Send],['Submit Offer','/employee/offers/new',CircleDollarSign],['NDA & Agreements','/employee/documents',FileSignature],['Transaction Alerts','/employee/alerts',BellRing],['My Agencies','/employee/agencies',Building2],['Follow-Ups','/employee/follow-ups',ClipboardList],['Performance','/employee/performance',BarChart3]] as const;
-export default function Shell({children}:{children:ReactNode}){const {profile}=usePortfolioStore();const [open,setOpen]=useState(false);const location=useLocation();const role=profile?.role==='owner'?'owner':profile?.role==='buyer'?'buyer':'employee';const nav=role==='owner'?ownerNav:role==='buyer'?buyerNav:employeeNav;return <div className="min-h-screen bg-[#f4f7fb] text-slate-950"><aside className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-800 bg-[#08101f] p-5 text-white transition-transform lg:translate-x-0 ${open?'translate-x-0':'-translate-x-full'}`}><div className="mb-8 flex items-start justify-between"><div><p className="text-xs font-semibold tracking-[.24em] text-blue-400">DATA MARKET HOUSE</p><h1 className="mt-2 text-xl font-semibold">Sales OS</h1><p className="mt-1 text-xs text-slate-500">Golden Foundation · v3.1.0</p></div><button className="lg:hidden" onClick={()=>setOpen(false)}><X/></button></div><div className="mb-5 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"><p className="text-[10px] font-semibold uppercase tracking-[.18em] text-slate-500">Signed in as</p><p className="mt-1 text-sm font-semibold capitalize text-white">{role}</p></div><nav className="space-y-1 overflow-y-auto">{nav.map(([label,to,Icon])=><NavLink key={label} to={to} onClick={()=>setOpen(false)} className={({isActive})=>`flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition ${isActive||(to==='/'&&location.pathname==='/')?'bg-white/10 text-white':'text-slate-400 hover:bg-white/5 hover:text-white'}`}><Icon size={18}/>{label}</NavLink>)}</nav><button onClick={()=>supabase.auth.signOut()} className="mb-3 rounded-xl border border-white/10 px-4 py-2 text-left text-xs text-slate-400 hover:text-white">Sign out</button><div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-xs text-slate-400">Operating principle</p><p className="mt-1 text-sm font-medium">Engines by engineers.</p></div></aside><main className="lg:pl-72"><div className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200/80 bg-[#f4f7fb]/90 px-5 backdrop-blur lg:hidden"><button onClick={()=>setOpen(true)}><Menu/></button><span className="text-sm font-semibold">DMH Sales OS</span><span className="text-xs font-semibold text-blue-600">{role}</span></div>{children}</main></div>}
+
+type NavItem = readonly [label: string, to: string, icon: LucideIcon];
+
+const ownerPrimary: readonly NavItem[] = [
+  ['Command', '/', LayoutDashboard],
+  ['Portfolios', '/portfolios', BriefcaseBusiness],
+  ['Create Portfolio', '/portfolios/new', Plus],
+  ['Agencies', '/agencies', Building2],
+  ['Pipeline', '/pipeline', Columns3],
+  ['Outreach', '/outreach', Phone],
+  ['Follow-Ups', '/follow-ups', ClipboardList],
+  ['Conversations', '/conversations', MessageSquareText],
+  ['Deals', '/deals', Handshake],
+  ['Approvals', '/approvals', ShieldCheck],
+  ['Closings', '/closings', Landmark],
+  ['Revenue', '/revenue', CircleDollarSign],
+  ['Employees', '/employees', Users],
+  ['Buyer Portal', '/buyers', Store],
+];
+
+const ownerAdvanced: readonly NavItem[] = [
+  ['Forecast', '/forecast', BarChart3],
+  ['Distributions', '/distributions', Send],
+  ['Email Templates', '/templates', Mail],
+  ['Portfolio Matching', '/matching', Target],
+  ['Campaigns', '/campaigns', Inbox],
+  ['Reply Command', '/replies', Inbox],
+  ['AS-IS Review', '/as-is-review', FileWarning],
+  ['Negotiations', '/negotiations', CircleDollarSign],
+  ['Assignments', '/assignments', ArrowRightLeft],
+  ['Performance', '/analytics', BarChart3],
+  ['Automation', '/automation', Workflow],
+  ['Deal Risk', '/risk', ShieldAlert],
+  ['Deal Execution', '/execution', ListChecks],
+  ['Deal Recovery', '/recovery', RotateCcw],
+  ['Agreement Sandbox', '/developer/agreements', FileSignature],
+  ['Audit', '/audit', LockKeyhole],
+];
+
+const buyerNav: readonly NavItem[] = [
+  ['Workspace', '/buyer', LayoutDashboard],
+  ['Marketplace', '/buyer/marketplace', Store],
+  ['Portfolio Library', '/buyer/library', FolderOpen],
+  ['Alerts', '/buyer/alerts', BellRing],
+];
+
+const employeeNav: readonly NavItem[] = [
+  ['Today', '/employee', LayoutDashboard],
+  ['Find Agencies', '/employee/prospect', Search],
+  ['My Agencies', '/employee/agencies', Building2],
+  ['Portfolios', '/employee/portfolio', BriefcaseBusiness],
+  ['Outreach', '/employee/outreach', Phone],
+  ['Follow-Ups', '/employee/follow-ups', ClipboardList],
+  ['Deals', '/employee/pipeline', Handshake],
+  ['Messages', '/employee/conversations', MessageSquareText],
+];
+
+function NavigationLink({ item, onNavigate }: { item: NavItem; onNavigate: () => void }) {
+  const [label, to, Icon] = item;
+  const location = useLocation();
+  return (
+    <NavLink
+      to={to}
+      onClick={onNavigate}
+      className={({ isActive }) =>
+        `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition ${
+          isActive || (to === '/' && location.pathname === '/')
+            ? 'bg-white/10 text-white'
+            : 'text-slate-400 hover:bg-white/5 hover:text-white'
+        }`
+      }
+    >
+      <Icon size={18} />
+      {label}
+    </NavLink>
+  );
+}
+
+export default function Shell({ children }: { children: ReactNode }) {
+  const { profile } = usePortfolioStore();
+  const [open, setOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const location = useLocation();
+  const role = profile?.role === 'owner' ? 'owner' : profile?.role === 'buyer' ? 'buyer' : 'employee';
+
+  const advancedActive = useMemo(
+    () => ownerAdvanced.some(([, to]) => location.pathname === to || location.pathname.startsWith(`${to}/`)),
+    [location.pathname],
+  );
+
+  return (
+    <div className="min-h-screen bg-[#f4f7fb] text-slate-950">
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-800 bg-[#08101f] p-5 text-white transition-transform lg:translate-x-0 ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="mb-8 flex items-start justify-between">
+          <div>
+            <p className="text-xs font-semibold tracking-[.24em] text-blue-400">DATA MARKET HOUSE</p>
+            <h1 className="mt-2 text-xl font-semibold">Sales OS</h1>
+            <p className="mt-1 text-xs text-slate-500">Focused Sales Workflow · v3.2.0</p>
+          </div>
+          <button className="lg:hidden" onClick={() => setOpen(false)} aria-label="Close navigation">
+            <X />
+          </button>
+        </div>
+
+        <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[.18em] text-slate-500">Signed in as</p>
+          <p className="mt-1 text-sm font-semibold capitalize text-white">{role}</p>
+        </div>
+
+        <nav className="space-y-1 overflow-y-auto">
+          {role === 'owner' && (
+            <>
+              {ownerPrimary.map((item) => (
+                <NavigationLink key={item[0]} item={item} onNavigate={() => setOpen(false)} />
+              ))}
+              <div className="pt-3">
+                <button
+                  type="button"
+                  onClick={() => setAdvancedOpen((value) => !value)}
+                  className={`flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm transition ${
+                    advancedActive ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <span className="flex items-center gap-3"><Settings size={18} />Advanced</span>
+                  <ChevronDown size={16} className={`transition-transform ${advancedOpen || advancedActive ? 'rotate-180' : ''}`} />
+                </button>
+                {(advancedOpen || advancedActive) && (
+                  <div className="mt-1 space-y-1 border-l border-white/10 pl-3">
+                    {ownerAdvanced.map((item) => (
+                      <NavigationLink key={item[0]} item={item} onNavigate={() => setOpen(false)} />
+                    ))}
+                  </div>
+                )}
+              </div>
+              <NavigationLink item={['Settings', '/settings', Settings]} onNavigate={() => setOpen(false)} />
+            </>
+          )}
+
+          {role === 'buyer' && buyerNav.map((item) => (
+            <NavigationLink key={item[0]} item={item} onNavigate={() => setOpen(false)} />
+          ))}
+
+          {role === 'employee' && employeeNav.map((item) => (
+            <NavigationLink key={item[0]} item={item} onNavigate={() => setOpen(false)} />
+          ))}
+        </nav>
+
+        <button
+          onClick={() => supabase.auth.signOut()}
+          className="mb-3 mt-5 rounded-xl border border-white/10 px-4 py-2 text-left text-xs text-slate-400 hover:text-white"
+        >
+          Sign out
+        </button>
+        <div className="mt-auto rounded-2xl border border-white/10 bg-white/5 p-4">
+          <p className="text-xs text-slate-400">Daily mission</p>
+          <p className="mt-1 text-sm font-medium">Find. Pitch. Follow up. Close.</p>
+        </div>
+      </aside>
+
+      <main className="lg:pl-72">
+        <div className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200/80 bg-[#f4f7fb]/90 px-5 backdrop-blur lg:hidden">
+          <button onClick={() => setOpen(true)} aria-label="Open navigation"><Menu /></button>
+          <span className="text-sm font-semibold">DMH Sales OS</span>
+          <span className="text-xs font-semibold text-blue-600">{role}</span>
+        </div>
+        {children}
+      </main>
+    </div>
+  );
+}
