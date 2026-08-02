@@ -17,7 +17,7 @@ function redirect(location: string, status = 302): Response {
 }
 
 function appErrorUrl(baseUrl: string, message: string): string {
-  const safeBase = baseUrl || '/';
+  const safeBase = baseUrl ? `${baseUrl}/buyer` : '/buyer';
   const separator = safeBase.includes('?') ? '&' : '?';
   return `${safeBase}${separator}inviteError=${encodeURIComponent(message)}`;
 }
@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
     if (!buyerEmail) throw new Error('The buyer account has no email address.');
     if (!appUrl) throw new Error('APP_URL is not configured.');
 
-    const buyerPortalUrl = `${appUrl}/buyer`;
+    const buyerPortalUrl = `${appUrl}/buyer?source=buyer-invite`;
     const { data: magicLink, error: magicLinkError } =
       await admin.auth.admin.generateLink({
         type: 'magiclink',
