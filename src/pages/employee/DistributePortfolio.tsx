@@ -9,7 +9,8 @@ import { usePortfolioStore } from '../../store/PortfolioStore';
 const input='w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100';
 
 export default function DistributePortfolio(){
-  const {active}=usePortfolioStore();
+  const {active,getDownloadUrl}=usePortfolioStore();
+  const maskedFile=active?.maskedFile;
   const {agencies,currentEmployee}=useAgencyStore();
   const {createDistribution,sendEmail,markDelivered,alreadySent,activeFileLocked}=useDistributionStore();
   const owned=agencies.filter(a=>a.ownerEmployeeId===currentEmployee.id);
@@ -55,25 +56,55 @@ export default function DistributePortfolio(){
   }
 
   async function deliver(){
-    if(!prepared||!active?.file)return;
+    if(!prepared||!active||!maskedFile)return;
+
     setSending(true);
-    if(prepared.method==='email'){
-      const subject=`${prepared.portfolioName} — Masked Portfolio Review`;
-      const result=await sendEmail(prepared.id,subject,testMode);
-      setNotice(result.message);
-      if(result.ok)setPrepared({...prepared,status:'sent',testMode:result.testMode});
+
+    try{
+      if(prepared.method==='email'){
+        const subject=`${prepared.portfolioName} — Masked Portfolio Review`;
+        const result=await sendEmail(prepared.id,subject,testMode);
+        setNotice(result.message);
+
+        if(result.ok){
+          setPrepared({...prepared,status:'sent',testMode:result.testMode});
+        }
+
+        return;
+      }
+
+      const signedUrl=await getDownloadUrl(active.id,'masked');
+
+      if(!signedUrl){
+        throw new Error('The approved masked file is unavailable.');
+      }
+
+      const anchor=document.createElement('a');
+      anchor.href=signedUrl;
+      anchor.download=maskedFile.name;
+      anchor.rel='noopener noreferrer';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+
+      await markDelivered(prepared.id);
+
+      setPrepared({
+        ...prepared,
+        status:'downloaded',
+        deliveredAt:new Date().toISOString(),
+      });
+
+      setNotice('The approved masked file was released and recorded.');
+    }catch(error){
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : 'Unable to deliver the masked file.',
+      );
+    }finally{
       setSending(false);
-      return;
     }
-    await markDelivered(prepared.id);
-    if(active.file.dataUrl){
-      const a=document.createElement('a');a.href=active.file.dataUrl;a.download=active.file.name;a.click();
-    }else{
-      const blob=new Blob(['AccountNumber,ConsumerName,Balance\nMASKED-001,REDACTED,1250.00'],{type:'text/csv'});
-      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=active.file.name;a.click();URL.revokeObjectURL(a.href);
-    }
-    setPrepared({...prepared,status:'downloaded',deliveredAt:new Date().toISOString()});
-    setSending(false);
   }
 
   if(!active)return <Empty title="No active portfolio" body="The owner must activate a portfolio before samples can be distributed."/>;
@@ -88,7 +119,7 @@ export default function DistributePortfolio(){
       <Card className="p-6 md:p-8">
         <div className="flex items-start gap-4">
           <div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-blue-600"><FileSpreadsheet/></div>
-          <div><Pill tone="success">Active portfolio</Pill><h3 className="mt-2 text-xl font-semibold">{active.name}</h3><p className="mt-1 text-sm text-slate-500">{active.file?.name||'No approved masked file'}</p></div>
+          <div><Pill tone="success">Active portfolio</Pill><h3 className="mt-2 text-xl font-semibold">{active.name}</h3><p className="mt-1 text-sm text-slate-500">{maskedFile?.name||'No approved masked file'}</p></div>
         </div>
         {activeFileLocked&&<div className="mt-6 flex gap-3 rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-800"><LockKeyhole size={19}/>Distribution is locked while the portfolio is {active.status.replace('_',' ')}.</div>}
         {!prepared?<form onSubmit={submit} className="mt-8 space-y-5">
@@ -110,7 +141,7 @@ export default function DistributePortfolio(){
           <div><span className="mb-2 block text-sm font-semibold">Delivery method</span><div className="grid grid-cols-2 gap-3"><button type="button" onClick={()=>setMethod('email')} className={`rounded-2xl border p-4 text-left ${method==='email'?'border-blue-500 bg-blue-50':'border-slate-200'}`}><Mail size={19}/><p className="mt-3 font-semibold">Send through DMH</p><p className="mt-1 text-xs text-slate-500">Provider-backed server-side delivery.</p></button><button type="button" onClick={()=>setMethod('download')} className={`rounded-2xl border p-4 text-left ${method==='download'?'border-blue-500 bg-blue-50':'border-slate-200'}`}><Download size={19}/><p className="mt-3 font-semibold">Controlled download</p><p className="mt-1 text-xs text-slate-500">Download after attribution.</p></button></div></div>
           <label><span className="mb-2 block text-sm font-semibold">Business reason</span><textarea className={`${input} min-h-24`} name="reason" required placeholder="Buyer requested masked sample after qualification call."/></label>
           <label><span className="mb-2 block text-sm font-semibold">Required follow-up</span><input className={input} name="followUp" type="datetime-local" required min={new Date().toISOString().slice(0,16)}/></label>
-          <PrimaryButton className="w-full" disabled={!active.file||activeFileLocked||!owned.length||!recipientEmail}>Prepare distribution <ArrowRight className="ml-2" size={18}/></PrimaryButton>
+          <PrimaryButton className="w-full" disabled={!maskedFile||activeFileLocked||!owned.length||!recipientEmail}>Prepare distribution <ArrowRight className="ml-2" size={18}/></PrimaryButton>
           {!owned.length&&<p className="text-center text-sm text-amber-700">Add or claim an agency first. A named decision-maker is not required.</p>}
           {agency&&!agency.generalEmail&&!namedContacts.length&&<p className="text-center text-sm text-amber-700">Add a valid general agency email or a contact email before distributing.</p>}
         </form>:<div className="mt-8">

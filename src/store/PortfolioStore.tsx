@@ -20,7 +20,7 @@ type Store={
 const Context=createContext<Store|null>(null);
 const mapFile=(file:any):PortfolioFile|undefined=>file?{id:file.id,name:file.file_name,size:Number(file.size_bytes||0),type:file.mime_type||'text/csv',uploadedAt:file.created_at,storagePath:file.storage_path}:undefined;
 function mapPortfolio(row:any,files:any[]=[]):Portfolio{
- const masked=files.find(f=>f.file_type==='masked')||files[0];
+ const masked=files.find(f=>f.file_type==='masked'&&f.employee_visible!==false)||files.find(f=>f.file_type==='masked');
  const unmasked=files.find(f=>f.file_type==='unmasked');
  return {id:row.id,name:row.name,originalCreditor:row.original_creditor||'',category:row.category||'',accountCount:Number(row.account_count||0),faceValue:Number(row.face_value||0),askingPrice:Number(row.asking_price||0),privateMinimum:Number(row.private_minimum||0),acquisitionCost:Number(row.acquisition_cost||0),employeeCommissionType:row.employee_commission_type||'percentage',employeeCommissionValue:Number(row.employee_commission_value||0),employeeCommissionVisible:row.employee_commission_visible!==false,description:row.description||'',sellingPoints:Array.isArray(row.selling_points)?row.selling_points:[],status:row.status,createdAt:row.created_at,activatedAt:row.activated_at||undefined,file:mapFile(masked),maskedFile:mapFile(masked),unmaskedFile:mapFile(unmasked)};
 }
