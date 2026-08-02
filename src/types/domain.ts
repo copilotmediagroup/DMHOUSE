@@ -33,6 +33,7 @@ export interface Portfolio {
   description: string;
   sellingPoints: string[];
   status: PortfolioStatus;
+  /** Legacy compatibility alias. New code must use maskedFile. */
   file?: PortfolioFile;
   maskedFile?: PortfolioFile;
   unmaskedFile?: PortfolioFile;

@@ -158,6 +158,9 @@ Deno.serve(async (request) => {
     if (userError || !user) throw new Error('Unauthorized.');
 
     const payload = await request.json().catch(() => ({}));
+    const requestedThreadId = typeof payload?.threadId === 'string' && payload.threadId.trim()
+      ? payload.threadId.trim()
+      : null;
     outreachMessageId = sanitizeHeader(payload?.messageId);
     if (!outreachMessageId) throw new Error('messageId is required.');
 
@@ -278,18 +281,18 @@ Deno.serve(async (request) => {
     let existingThreadId: string | null = null;
     let previousRfcMessageId: string | null = null;
 
-    if (conversation?.id) {
+    if (conversation?.id && requestedThreadId) {
       const { data: previousMessage } = await admin
         .from('conversation_messages')
         .select('provider_thread_id, rfc_message_id')
         .eq('conversation_id', conversation.id)
         .eq('provider', 'gmail')
-        .not('provider_thread_id', 'is', null)
+        .eq('provider_thread_id', requestedThreadId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      existingThreadId = previousMessage?.provider_thread_id || null;
+      existingThreadId = previousMessage?.provider_thread_id || requestedThreadId;
       previousRfcMessageId = previousMessage?.rfc_message_id || null;
     }
 

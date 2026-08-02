@@ -141,7 +141,7 @@ export default function Shell({ children }: { children: ReactNode }) {
           <div>
             <p className="text-xs font-semibold tracking-[.24em] text-blue-400">DATA MARKET HOUSE</p>
             <h1 className="mt-2 text-xl font-semibold">Sales OS</h1>
-            <p className="mt-1 text-xs text-slate-500">Authentication Isolation · v5.5.0</p>
+            <p className="mt-1 text-xs text-slate-500">NDA Transaction Workspace · v5.5.1</p>
           </div>
           <button className="lg:hidden" onClick={() => setOpen(false)} aria-label="Close navigation">
             <X />

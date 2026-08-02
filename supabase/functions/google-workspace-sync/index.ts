@@ -372,10 +372,20 @@ Deno.serve(async (request) => {
         continue;
       }
 
+      const { data: matchedContact } = await admin
+        .from('agency_contacts')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('agency_id', conversation.agency_id)
+        .ilike('email', fromEmail)
+        .limit(1)
+        .maybeSingle();
+
       const { error: insertError } = await admin.from('conversation_messages').insert({
         company_id: companyId,
         conversation_id: conversation.conversation_id,
         agency_id: conversation.agency_id,
+        contact_id: matchedContact?.id || null,
         sender_profile_id: null,
         direction: 'inbound',
         from_email: fromEmail,

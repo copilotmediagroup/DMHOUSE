@@ -1,8 +1,9 @@
-import {FormEvent,useMemo,useState} from 'react';
+import {FormEvent,useEffect,useMemo,useState} from 'react';
 import {FileSignature,MailCheck,Send,ShieldCheck} from 'lucide-react';
 import {Card,Field,PrimaryButton,SecondaryButton,inputClass} from '../../components/Primitives';
 import {buildAgreementHtml,printAgreement} from '../../components/AgreementDocument';
 import {useAgreementStore,type AgreementFields,type AgreementType} from '../../store/AgreementStore';
+import {usePortfolioStore} from '../../store/PortfolioStore';
 
 const initial:AgreementFields={
   buyerCompany:'',buyerName:'',buyerTitle:'',buyerAddress:'',buyerEmail:'',buyerPhone:'',
@@ -17,15 +18,17 @@ const initial:AgreementFields={
 
 export default function DocumentStudio(){
   const {upsertBuyer,save,sign,send,history,workflowState}=useAgreementStore();
+  const {portfolios,active}=usePortfolioStore();
   const [type,setType]=useState<AgreementType>('nda');
   const [f,setF]=useState(initial);
-  const [portfolioId,setPortfolioId]=useState('');
+  const [portfolioId,setPortfolioId]=useState(active?.id||'');
   const [documentId,setDocumentId]=useState('');
   const [message,setMessage]=useState('');
   const [emailSubject,setEmailSubject]=useState('NDA Ready for Review and Signature');
   const [emailMessage,setEmailMessage]=useState('A secure Data Market House transaction has been prepared for you. Use the link below to review and electronically sign the NDA, then continue through the next purchase stages inside the Buyer Portal.');
   const [invites,setInvites]=useState<any[]>([]);
   const [style,setStyle]=useState('script');
+  useEffect(()=>{if(!portfolioId&&active)setPortfolioId(active.id)},[active,portfolioId]);
   const html=useMemo(()=>buildAgreementHtml(type,f,false,documentId?{name:f.sellerName,title:f.sellerTitle,style}:undefined),[type,f,documentId,style]);
   const set=(k:keyof AgreementFields,v:string)=>setF(x=>({...x,[k]:v}));
   const chooseType=(v:AgreementType)=>{
@@ -41,6 +44,7 @@ export default function DocumentStudio(){
     e.preventDefault();
     try{
       if(!f.buyerEmail.trim())throw new Error('Buyer email is required.');
+      if(!portfolioId)throw new Error('Select the portfolio this transaction is for.');
       const buyerId=await upsertBuyer({
         email:f.buyerEmail,
         companyName:f.buyerCompany,
@@ -107,7 +111,7 @@ export default function DocumentStudio(){
             <p className="mt-2 text-xs text-blue-700">The email below receives the secure Buyer Portal link. It is never hidden at send time.</p>
           </div>
 
-          <Field label="Portfolio ID (linked automatically in a live deal)"><input className={inputClass} value={portfolioId} onChange={e=>setPortfolioId(e.target.value)} placeholder="Optional during development testing"/></Field>
+          <Field label="Portfolio"><select className={inputClass} value={portfolioId} onChange={e=>{const id=e.target.value;setPortfolioId(id);const portfolio=portfolios.find(x=>x.id===id);if(portfolio){setF(x=>({...x,portfolioName:portfolio.name,creditors:portfolio.originalCreditor,accountCount:String(portfolio.accountCount),principalBalance:String(portfolio.faceValue),currentBalance:String(portfolio.faceValue),purchasePrice:String(portfolio.askingPrice)}))}}} required><option value="">Select the portfolio for this transaction</option>{portfolios.filter(x=>['active','negotiating','reserved'].includes(x.status)).map(x=><option key={x.id} value={x.id}>{x.name} · {x.accountCount.toLocaleString()} accounts</option>)}</select></Field>
           {fields.map(k=><Field key={k} label={k.replace(/([A-Z])/g,' $1').replace(/^./,x=>x.toUpperCase())}>
             <input type={k==='buyerEmail'?'email':'text'} className={inputClass} value={f[k]} onChange={e=>set(k,e.target.value)} required={required.includes(k)}/>
           </Field>)}

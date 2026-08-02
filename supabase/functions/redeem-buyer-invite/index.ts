@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
     const { data: invitation, error: invitationError } = await admin
       .from('buyer_invitations')
       .select(
-        'id,buyer_id,expires_at,invalidated_at,redeemed_at,buyer_profiles!inner(user_id,email)',
+        'id,buyer_id,document_id,expires_at,invalidated_at,redeemed_at,buyer_profiles!inner(user_id,email)',
       )
       .eq('token_hash', tokenHash)
       .maybeSingle();
@@ -94,7 +94,18 @@ Deno.serve(async (req) => {
     if (!buyerEmail) throw new Error('The buyer account has no email address.');
     if (!appUrl) throw new Error('APP_URL is not configured.');
 
-    const buyerPortalUrl = `${appUrl}/buyer?source=buyer-invite`;
+    let buyerPortalUrl = `${appUrl}/buyer?source=buyer-invite`;
+    if (invitation.document_id) {
+      const { data: document, error: documentError } = await admin
+        .from('deal_documents_generated')
+        .select('portfolio_id')
+        .eq('id', invitation.document_id)
+        .maybeSingle();
+      if (documentError) console.error('Invitation document lookup failed', documentError);
+      if (document?.portfolio_id) {
+        buyerPortalUrl = `${appUrl}/buyer/portfolio/${document.portfolio_id}/documents?source=buyer-invite`;
+      }
+    }
     const { data: magicLink, error: magicLinkError } =
       await admin.auth.admin.generateLink({
         type: 'magiclink',
