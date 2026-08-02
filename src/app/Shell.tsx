@@ -140,7 +140,7 @@ export default function Shell({ children }: { children: ReactNode }) {
           <div>
             <p className="text-xs font-semibold tracking-[.24em] text-blue-400">DATA MARKET HOUSE</p>
             <h1 className="mt-2 text-xl font-semibold">Sales OS</h1>
-            <p className="mt-1 text-xs text-slate-500">Gmail Reply Sync · v4.0.3</p>
+            <p className="mt-1 text-xs text-slate-500">True Threaded Inbox · v4.0.5</p>
           </div>
           <button className="lg:hidden" onClick={() => setOpen(false)} aria-label="Close navigation">
             <X />
