@@ -26,6 +26,7 @@ import {
   RotateCcw,
   Search,
   Send,
+  WalletCards,
   Settings,
   ShieldAlert,
   ShieldCheck,
@@ -87,15 +88,13 @@ const buyerNav: readonly NavItem[] = [
 
 const employeeNav: readonly NavItem[] = [
   ['Today', '/employee', LayoutDashboard],
-  ['Find Agencies', '/employee/prospect', Search],
-  ['My Agencies', '/employee/agencies', Building2],
+  ['Agencies', '/employee/agencies', Building2],
   ['Portfolios', '/employee/portfolio', BriefcaseBusiness],
-  ['Outreach', '/employee/outreach', Phone],
-  ['Follow-Ups', '/employee/follow-ups', ClipboardList],
-  ['Deals', '/employee/pipeline', Handshake],
   ['Messages', '/employee/conversations', MessageSquareText],
+  ['Deals', '/employee/pipeline', Handshake],
   ['Documents', '/employee/documents', FileSignature],
   ['Closings', '/employee/closings', Landmark],
+  ['Earnings', '/employee/earnings', WalletCards],
 ];
 
 function NavigationLink({ item, onNavigate }: { item: NavItem; onNavigate: () => void }) {
@@ -142,7 +141,7 @@ export default function Shell({ children }: { children: ReactNode }) {
           <div>
             <p className="text-xs font-semibold tracking-[.24em] text-blue-400">DATA MARKET HOUSE</p>
             <h1 className="mt-2 text-xl font-semibold">Sales OS</h1>
-            <p className="mt-1 text-xs text-slate-500">Compensation Engine · v5.2.0</p>
+            <p className="mt-1 text-xs text-slate-500">Core Employee Sales Desk · v5.3.0</p>
           </div>
           <button className="lg:hidden" onClick={() => setOpen(false)} aria-label="Close navigation">
             <X />
