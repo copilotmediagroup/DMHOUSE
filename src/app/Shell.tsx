@@ -140,7 +140,7 @@ export default function Shell({ children }: { children: ReactNode }) {
           <div>
             <p className="text-xs font-semibold tracking-[.24em] text-blue-400">DATA MARKET HOUSE</p>
             <h1 className="mt-2 text-xl font-semibold">Sales OS</h1>
-            <p className="mt-1 text-xs text-slate-500">Focused Sales Workflow · v3.2.0</p>
+            <p className="mt-1 text-xs text-slate-500">Company Messaging Foundation · v4.0.1</p>
           </div>
           <button className="lg:hidden" onClick={() => setOpen(false)} aria-label="Close navigation">
             <X />
@@ -177,7 +177,7 @@ export default function Shell({ children }: { children: ReactNode }) {
                   </div>
                 )}
               </div>
-              <NavigationLink item={['Settings', '/settings', Settings]} onNavigate={() => setOpen(false)} />
+              <NavigationLink item={['Company Email', '/settings/email', Mail]} onNavigate={() => setOpen(false)} />
             </>
           )}
 
