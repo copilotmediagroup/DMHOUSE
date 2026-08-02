@@ -10,10 +10,12 @@ import {
   RotateCcw,
   ShieldCheck,
   Sparkles,
+  Save,
+  Trophy,
   Trash2,
   XCircle,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Card, Pill, PrimaryButton, SecondaryButton } from '../../components/Primitives';
 import { usePortfolioStore } from '../../store/PortfolioStore';
@@ -37,9 +39,20 @@ type HealthCheck = {
 export default function PortfolioDetail() {
   const { id } = useParams();
   const nav = useNavigate();
-  const { portfolios, transition, removePortfolio, getDownloadUrl } = usePortfolioStore();
+  const { portfolios, transition, removePortfolio, getDownloadUrl, updatePortfolio } = usePortfolioStore();
   const p = portfolios.find((x) => x.id === id);
   const [notice, setNotice] = useState('');
+  const [commissionType, setCommissionType] = useState<'percentage' | 'flat'>('percentage');
+  const [commissionValue, setCommissionValue] = useState(0);
+  const [commissionVisible, setCommissionVisible] = useState(true);
+  const [savingCommission, setSavingCommission] = useState(false);
+
+  useEffect(() => {
+    if (!p) return;
+    setCommissionType(p.employeeCommissionType);
+    setCommissionValue(p.employeeCommissionValue);
+    setCommissionVisible(p.employeeCommissionVisible);
+  }, [p?.id, p?.employeeCommissionType, p?.employeeCommissionValue, p?.employeeCommissionVisible]);
 
   const health = useMemo(() => {
     if (!p) return null;
@@ -47,8 +60,8 @@ export default function PortfolioDetail() {
     const checks: HealthCheck[] = [
       {
         label: 'Masked sales file',
-        detail: p.file ? 'Masked CSV is available for controlled distribution.' : 'Upload a masked CSV before marketing.',
-        passed: Boolean(p.file),
+        detail: p.maskedFile ? 'Masked CSV is available for controlled distribution.' : 'Upload a masked CSV before marketing.',
+        passed: Boolean(p.maskedFile),
         weight: 20,
       },
       {
@@ -139,6 +152,26 @@ export default function PortfolioDetail() {
 
   const grossProfit = p.askingPrice - p.acquisitionCost;
   const margin = p.askingPrice > 0 ? Math.max(0, (grossProfit / p.askingPrice) * 100) : 0;
+  const commissionAmount = commissionType === 'percentage'
+    ? p.askingPrice * (Math.max(0, commissionValue) / 100)
+    : Math.max(0, commissionValue);
+
+  async function saveCommission() {
+    setSavingCommission(true);
+    setNotice('');
+    try {
+      await updatePortfolio(portfolio.id, {
+        employeeCommissionType: commissionType,
+        employeeCommissionValue: Math.max(0, commissionValue),
+        employeeCommissionVisible: commissionVisible,
+      });
+      setNotice('Employee compensation saved. The employee workspace has been updated.');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Employee compensation could not be saved.');
+    } finally {
+      setSavingCommission(false);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-[1350px] p-5 md:p-8 lg:p-10">
@@ -271,6 +304,78 @@ export default function PortfolioDetail() {
         </div>
 
         <div className="space-y-6">
+          <Card className="overflow-hidden">
+            <div className="border-b border-emerald-100 bg-emerald-50 p-6">
+              <div className="flex items-center gap-3">
+                <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white text-emerald-700 shadow-sm">
+                  <Trophy size={21} />
+                </div>
+                <div>
+                  <p className="font-semibold text-emerald-950">Employee compensation</p>
+                  <p className="text-xs text-emerald-700">Set the payout opportunity for this portfolio</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-5 p-6">
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold">Commission structure</span>
+                <select
+                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  value={commissionType}
+                  onChange={(event) => setCommissionType(event.target.value as 'percentage' | 'flat')}
+                >
+                  <option value="percentage">Percentage of sale price</option>
+                  <option value="flat">Flat dollar amount</option>
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-semibold">{commissionType === 'percentage' ? 'Commission percentage' : 'Flat commission amount'}</span>
+                <div className="relative">
+                  {commissionType === 'flat' && <span className="absolute left-4 top-3 text-sm text-slate-400">$</span>}
+                  <input
+                    className={`w-full rounded-2xl border border-slate-200 bg-white py-3 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 ${commissionType === 'flat' ? 'pl-8' : 'pl-4'}`}
+                    min="0"
+                    step={commissionType === 'percentage' ? '0.1' : '0.01'}
+                    type="number"
+                    value={commissionValue}
+                    onChange={(event) => setCommissionValue(Number(event.target.value))}
+                  />
+                  {commissionType === 'percentage' && <span className="absolute right-4 top-3 text-sm text-slate-400">%</span>}
+                </div>
+              </label>
+
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4">
+                <input
+                  className="mt-1 h-4 w-4"
+                  type="checkbox"
+                  checked={commissionVisible}
+                  onChange={(event) => setCommissionVisible(event.target.checked)}
+                />
+                <span>
+                  <span className="block text-sm font-semibold">Show payout to employees</span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-500">Employees see the projected payout at the approved asking price. Buyers never see this information.</span>
+                </span>
+              </label>
+
+              <div className="rounded-2xl bg-slate-950 p-5 text-white">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Live employee preview</p>
+                <p className="mt-3 text-3xl font-semibold">{money(commissionAmount)}</p>
+                <p className="mt-2 text-xs text-slate-400">
+                  {commissionType === 'percentage'
+                    ? `${commissionValue}% of the ${money(p.askingPrice)} asking price`
+                    : `Flat payout on a ${money(p.askingPrice)} sale`}
+                </p>
+              </div>
+
+              <PrimaryButton className="w-full" disabled={savingCommission} onClick={saveCommission}>
+                <Save className="mr-2" size={17} />
+                {savingCommission ? 'Saving…' : 'Save compensation'}
+              </PrimaryButton>
+            </div>
+          </Card>
+
           <Card className="overflow-hidden">
             <div className="border-b border-slate-100 p-6">
               <div className="flex items-center gap-3">

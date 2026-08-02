@@ -119,7 +119,7 @@ export default function DistributePortfolio(){
       <Card className="p-6 md:p-8">
         <div className="flex items-start gap-4">
           <div className="grid h-12 w-12 place-items-center rounded-2xl bg-blue-50 text-blue-600"><FileSpreadsheet/></div>
-          <div><Pill tone="success">Active portfolio</Pill><h3 className="mt-2 text-xl font-semibold">{active.name}</h3><p className="mt-1 text-sm text-slate-500">{maskedFile?.name||'No approved masked file'}</p></div>
+          <div><Pill tone="success">Active portfolio</Pill><h3 className="mt-2 text-xl font-semibold">{active.name}</h3><p className="mt-1 text-sm text-slate-500">{active.maskedFile?.name||'No approved masked file'}</p></div>
         </div>
         {activeFileLocked&&<div className="mt-6 flex gap-3 rounded-2xl bg-amber-50 p-4 text-sm font-semibold text-amber-800"><LockKeyhole size={19}/>Distribution is locked while the portfolio is {active.status.replace('_',' ')}.</div>}
         {!prepared?<form onSubmit={submit} className="mt-8 space-y-5">
@@ -141,7 +141,7 @@ export default function DistributePortfolio(){
           <div><span className="mb-2 block text-sm font-semibold">Delivery method</span><div className="grid grid-cols-2 gap-3"><button type="button" onClick={()=>setMethod('email')} className={`rounded-2xl border p-4 text-left ${method==='email'?'border-blue-500 bg-blue-50':'border-slate-200'}`}><Mail size={19}/><p className="mt-3 font-semibold">Send through DMH</p><p className="mt-1 text-xs text-slate-500">Provider-backed server-side delivery.</p></button><button type="button" onClick={()=>setMethod('download')} className={`rounded-2xl border p-4 text-left ${method==='download'?'border-blue-500 bg-blue-50':'border-slate-200'}`}><Download size={19}/><p className="mt-3 font-semibold">Controlled download</p><p className="mt-1 text-xs text-slate-500">Download after attribution.</p></button></div></div>
           <label><span className="mb-2 block text-sm font-semibold">Business reason</span><textarea className={`${input} min-h-24`} name="reason" required placeholder="Buyer requested masked sample after qualification call."/></label>
           <label><span className="mb-2 block text-sm font-semibold">Required follow-up</span><input className={input} name="followUp" type="datetime-local" required min={new Date().toISOString().slice(0,16)}/></label>
-          <PrimaryButton className="w-full" disabled={!maskedFile||activeFileLocked||!owned.length||!recipientEmail}>Prepare distribution <ArrowRight className="ml-2" size={18}/></PrimaryButton>
+          <PrimaryButton className="w-full" disabled={!active.maskedFile||activeFileLocked||!owned.length||!recipientEmail}>Prepare distribution <ArrowRight className="ml-2" size={18}/></PrimaryButton>
           {!owned.length&&<p className="text-center text-sm text-amber-700">Add or claim an agency first. A named decision-maker is not required.</p>}
           {agency&&!agency.generalEmail&&!namedContacts.length&&<p className="text-center text-sm text-amber-700">Add a valid general agency email or a contact email before distributing.</p>}
         </form>:<div className="mt-8">
