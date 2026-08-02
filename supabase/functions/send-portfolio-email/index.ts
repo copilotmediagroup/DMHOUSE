@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
     const resendKey = Deno.env.get('RESEND_API_KEY');
     const productionEnabled = Deno.env.get('DMH_EMAIL_PRODUCTION_ENABLED') === 'true';
     const testRecipient = Deno.env.get('DMH_EMAIL_TEST_RECIPIENT');
-    const sender = Deno.env.get('DMH_EMAIL_FROM') || 'Data Market House <info@debtpaper.com>';
+    const sender = Deno.env.get('DMH_EMAIL_FROM') || 'Data Market House <sales@debtpaper.com>';
 
     const client = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authorization } } });
     const admin = createClient(supabaseUrl, serviceKey);
@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
           <span style="color:#64748b">Reference: ${escapeHtml(row.id)}</span>
         </div>
         <p>Please reply to this email with any questions or to discuss pricing and availability.</p>
-        <p>Data Market House<br/>info@debtpaper.com</p>
+        <p>Data Market House<br/>sales@debtpaper.com</p>
         ${actualTestMode ? '<p style="color:#b45309;font-weight:700">TEST MODE — the intended recipient did not receive this message.</p>' : ''}
       </div>`;
 
@@ -65,7 +65,7 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         from: sender,
         to: [recipient],
-        reply_to: 'info@debtpaper.com',
+        reply_to: 'sales@debtpaper.com',
         subject: actualTestMode ? `[TEST] ${subject.trim()}` : subject.trim(),
         html,
         headers: {

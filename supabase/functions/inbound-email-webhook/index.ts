@@ -6,7 +6,7 @@ const emailFrom=(value:unknown)=>{const raw=String(value||'').toLowerCase();cons
 Deno.serve(async(req)=>{try{
  const secret=Deno.env.get('INBOUND_EMAIL_WEBHOOK_SECRET');if(secret&&req.headers.get('x-dmh-webhook-secret')!==secret)throw new Error('Invalid webhook signature.');
  const admin=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);const payload=await req.json();
- const from=emailFrom(payload.from||payload.sender);const to=emailFrom(Array.isArray(payload.to)?payload.to[0]:payload.to)||'info@debtpaper.com';
+ const from=emailFrom(payload.from||payload.sender);const to=emailFrom(Array.isArray(payload.to)?payload.to[0]:payload.to)||'sales@debtpaper.com';
  const subject=String(payload.subject||'Reply');const body=String(payload.text||payload.body||payload.html||'').trim();const providerId=String(payload.id||payload.email_id||payload.message_id||crypto.randomUUID());
  const inReplyTo=String(payload.in_reply_to||payload.headers?.['in-reply-to']||payload.headers?.['In-Reply-To']||'').replace(/[<>]/g,'');
  let match:any=null;let outreach:any=null;
