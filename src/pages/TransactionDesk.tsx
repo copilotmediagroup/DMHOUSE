@@ -18,6 +18,10 @@ import {
 } from '../store/AgreementStore';
 import {usePortfolioStore} from '../store/PortfolioStore';
 import {supabase} from '../lib/supabase';
+import TransactionSummary from './transaction/TransactionSummary';
+import TransactionDocuments from './transaction/TransactionDocuments';
+import TransactionTimeline from './transaction/TransactionTimeline';
+import TransactionCommunications from './transaction/TransactionCommunications';
 
 type Transaction={
   room_id:string;
@@ -398,7 +402,7 @@ export default function TransactionDesk(){
       }
 
       setMessage(
-        `Payment confirmed and final portfolio released to ${t.buyer_company}.`
+        `Payment confirmed. DMHOUSE automatically released the final portfolio to ${t.buyer_company}.`
       );
 
       await load();
@@ -650,8 +654,8 @@ export default function TransactionDesk(){
                         Waiting for Owner
                       </h3>
                       <p className="mt-2 text-sm leading-6 text-slate-300">
-                        Purchase Agreement is signed. The Owner now confirms payment
-                        and releases the final portfolio.
+                        Purchase Agreement is signed. The Owner must confirm cleared payment.
+                        DMHOUSE automatically releases the final portfolio after confirmation.
                       </p>
                     </>
                   )}
@@ -687,11 +691,11 @@ export default function TransactionDesk(){
                     <>
                       <WalletCards className="mt-5 text-emerald-300" size={30}/>
                       <h3 className="mt-3 text-xl font-semibold">
-                        Confirm Payment & Release
+                        Confirm Payment
                       </h3>
                       <p className="mt-2 text-sm leading-6 text-slate-300">
                         Signed agreement and final file are ready.
-                        Confirm cleared funds and release the unmasked portfolio.
+                        Confirm cleared funds. DMHOUSE will automatically release the unmasked portfolio.
                       </p>
 
                       <PrimaryButton
@@ -701,7 +705,7 @@ export default function TransactionDesk(){
                       >
                         {busy===t.room_id
                           ?'Completing…'
-                          :'Confirm Payment & Release Final File'}
+                          :'Confirm Payment'}
                       </PrimaryButton>
                     </>
                   )}
@@ -717,6 +721,46 @@ export default function TransactionDesk(){
                       </p>
                     </>
                   )}
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 bg-slate-50/70 p-6 md:p-7">
+                <div className="grid gap-8 xl:grid-cols-2">
+                  <TransactionSummary
+                    buyerCompany={t.buyer_company}
+                    buyerName={t.buyer_name}
+                    buyerEmail={t.buyer_email}
+                    portfolioName={t.portfolio_name}
+                    askingPrice={t.asking_price}
+                    accountCount={t.account_count}
+                    createdAt={t.created_at}
+                  />
+
+                  <TransactionDocuments
+                    ndaSigned={ndaSigned}
+                    paSent={paSent}
+                    paSigned={paSigned}
+                    unmaskedUploaded={t.unmasked_uploaded}
+                    released={released}
+                  />
+                </div>
+
+                <div className="mt-8 grid gap-8 border-t border-slate-200 pt-8 xl:grid-cols-2">
+                  <TransactionTimeline
+                    createdAt={t.created_at}
+                    ndaSentAt={t.nda_sent_at}
+                    ndaSignedAt={t.nda_buyer_signed_at}
+                    purchaseSentAt={t.purchase_sent_at}
+                    purchaseSignedAt={t.purchase_buyer_signed_at}
+                    paymentConfirmedAt={t.payment_confirmed_at}
+                    releasedAt={t.final_file_released_at}
+                  />
+
+                  <TransactionCommunications
+                    role={role}
+                    buyerCompany={t.buyer_company}
+                    buyerEmail={t.buyer_email}
+                  />
                 </div>
               </div>
             </Card>
