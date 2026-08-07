@@ -876,6 +876,7 @@ export default function TransactionDesk(){
                   <TransactionCommunications
                     role={role}
                     buyerCompany={t.buyer_company}
+                    buyerName={t.buyer_name}
                     buyerEmail={t.buyer_email}
                   />
                 </div>
