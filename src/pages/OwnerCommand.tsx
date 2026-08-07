@@ -18,6 +18,7 @@ import {useRevenueStore} from '../store/RevenueStore';
 import {useTransactionAutomation} from '../store/TransactionAutomationStore';
 import {assessDealRisk} from '../engines/dealRisk';
 import {useTransactionIntelligence} from '../hooks/useTransactionIntelligence';
+import {transactionPath} from '../lib/transactionIntelligence';
 
 const money=(n:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n);
 const title=(v:string)=>v.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
@@ -69,7 +70,7 @@ export default function OwnerCommand(){
        title:item.headline,
        detail:`${t.buyer_company} · ${t.portfolio_name} · ${money(t.asking_price)} · ${item.detail}`,
        meta,
-       path:'/transactions',
+       path:transactionPath('owner',t.room_id),
        tone:
          ownerAction&&item.action==='confirm_payment'
            ?'danger'

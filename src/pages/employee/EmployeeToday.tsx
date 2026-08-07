@@ -80,7 +80,10 @@ export default function EmployeeToday() {
     ?{
         label:transactionAction.headline,
         detail:`${transactionAction.transaction.buyer_company} · ${transactionAction.transaction.portfolio_name}. ${transactionAction.detail}`,
-        path:transactionPath('employee'),
+        path:transactionPath(
+          'employee',
+          transactionAction.transaction.room_id
+        ),
         action:transactionAction.buttonLabel||'Open Transaction',
         icon:<FileSignature/>
       }
@@ -104,7 +107,10 @@ export default function EmployeeToday() {
           ?{
               label:waitingTransaction.headline,
               detail:`${waitingTransaction.transaction.buyer_company} · ${waitingTransaction.transaction.portfolio_name}. ${waitingTransaction.detail}`,
-              path:transactionPath('employee'),
+              path:transactionPath(
+                'employee',
+                waitingTransaction.transaction.room_id
+              ),
               action:'Open Transaction',
               icon:<Clock3/>
             }

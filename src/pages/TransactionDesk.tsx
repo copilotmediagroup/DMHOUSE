@@ -9,7 +9,7 @@ import {
   WalletCards
 } from 'lucide-react';
 import {useCallback,useEffect,useMemo,useState} from 'react';
-import {Link} from 'react-router-dom';
+import {Link,useSearchParams} from 'react-router-dom';
 import {Card,PrimaryButton,SecondaryButton} from '../components/Primitives';
 import {buildAgreementHtml} from '../components/AgreementDocument';
 import {
@@ -18,6 +18,7 @@ import {
 } from '../store/AgreementStore';
 import {usePortfolioStore} from '../store/PortfolioStore';
 import {supabase} from '../lib/supabase';
+import {deriveTransactionIntelligence} from '../lib/transactionIntelligence';
 import TransactionSummary from './transaction/TransactionSummary';
 import TransactionDocuments from './transaction/TransactionDocuments';
 import TransactionTimeline from './transaction/TransactionTimeline';
@@ -131,6 +132,9 @@ export default function TransactionDesk(){
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState('');
   const [message,setMessage]=useState('');
+  const [searchParams]=useSearchParams();
+  const requestedRoom=searchParams.get('room')||'';
+  const [deskFilter,setDeskFilter]=useState<'all'|'mine'|'waiting'|'complete'>('all');
 
   const role=profile?.role==='owner'?'owner':'employee';
 
@@ -174,6 +178,70 @@ export default function TransactionDesk(){
       void supabase.removeChannel(channel);
     };
   },[load]);
+
+  const intelligence=useMemo(
+    ()=>transactions.map(transaction=>({
+      transaction,
+      intelligence:deriveTransactionIntelligence(transaction as any,role)
+    })),
+    [transactions,role]
+  );
+
+  const myActionCount=intelligence.filter(
+    item=>!item.intelligence.complete&&item.intelligence.actionOwner===role
+  ).length;
+
+  const waitingCount=intelligence.filter(
+    item=>
+      !item.intelligence.complete&&
+      item.intelligence.actionOwner!==role
+  ).length;
+
+  const completeCount=intelligence.filter(
+    item=>item.intelligence.complete
+  ).length;
+
+  const filteredTransactions=useMemo(()=>{
+    if(requestedRoom){
+      const requested=transactions.find(
+        transaction=>transaction.room_id===requestedRoom
+      );
+
+      if(requested)return [requested];
+    }
+
+    if(deskFilter==='mine'){
+      return intelligence
+        .filter(item=>
+          !item.intelligence.complete&&
+          item.intelligence.actionOwner===role
+        )
+        .map(item=>item.transaction);
+    }
+
+    if(deskFilter==='waiting'){
+      return intelligence
+        .filter(item=>
+          !item.intelligence.complete&&
+          item.intelligence.actionOwner!==role
+        )
+        .map(item=>item.transaction);
+    }
+
+    if(deskFilter==='complete'){
+      return intelligence
+        .filter(item=>item.intelligence.complete)
+        .map(item=>item.transaction);
+    }
+
+    return transactions;
+  },[
+    intelligence,
+    transactions,
+    deskFilter,
+    role,
+    requestedRoom
+  ]);
 
   const counts=useMemo(()=>({
     total:transactions.length,
@@ -481,8 +549,57 @@ export default function TransactionDesk(){
         </Card>
       </div>
 
+      <div className="mt-6 flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-2">
+          {[
+            ['all','All',transactions.length],
+            ['mine','Needs My Action',myActionCount],
+            ['waiting','Waiting',waitingCount],
+            ['complete','Complete',completeCount]
+          ].map(([value,label,count])=>(
+            <button
+              key={String(value)}
+              type="button"
+              onClick={()=>setDeskFilter(value as typeof deskFilter)}
+              className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition ${
+                deskFilter===value&&!requestedRoom
+                  ?'bg-slate-950 text-white shadow-sm'
+                  :'bg-slate-50 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {label}
+              <span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
+                deskFilter===value&&!requestedRoom
+                  ?'bg-white/15 text-white'
+                  :'bg-white text-slate-500'
+              }`}>
+                {count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {requestedRoom&&(
+          <button
+            type="button"
+            onClick={()=>{
+              const base=
+                role==='employee'
+                  ?'/employee/transactions'
+                  :'/transactions';
+
+              window.history.replaceState({},'',base);
+              window.location.reload();
+            }}
+            className="rounded-2xl px-4 py-2.5 text-sm font-semibold text-blue-600 hover:bg-blue-50"
+          >
+            Show all transactions
+          </button>
+        )}
+      </div>
+
       <div className="mt-7 space-y-5">
-        {transactions.map(t=>{
+        {filteredTransactions.map(t=>{
           const stage=transactionStage(t);
           const ndaSigned=t.nda_status==='fully_executed';
           const paSent=
@@ -767,7 +884,28 @@ export default function TransactionDesk(){
           );
         })}
 
-        {!loading&&transactions.length===0&&(
+        {!loading&&transactions.length>0&&filteredTransactions.length===0&&(
+          <Card className="grid min-h-56 place-items-center p-10 text-center">
+            <div>
+              <CheckCircle2
+                className="mx-auto text-emerald-300"
+                size={42}
+              />
+              <h3 className="mt-4 text-lg font-semibold">
+                Nothing in this queue
+              </h3>
+              <p className="mt-2 text-sm text-slate-500">
+                {deskFilter==='mine'
+                  ?'You have no transaction actions waiting right now.'
+                  :deskFilter==='waiting'
+                    ?'No active transactions are waiting on someone else.'
+                    :'No completed transactions are in this view.'}
+              </p>
+            </div>
+          </Card>
+        )}
+
+                {!loading&&transactions.length===0&&(
           <Card className="grid min-h-72 place-items-center p-10 text-center">
             <div>
               <LockKeyhole className="mx-auto text-slate-300" size={42}/>

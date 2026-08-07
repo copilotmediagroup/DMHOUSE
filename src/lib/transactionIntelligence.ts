@@ -240,8 +240,16 @@ export function deriveTransactionIntelligence(
   };
 }
 
-export function transactionPath(role:StaffRole){
-  return role==='employee'
-    ?'/employee/transactions'
-    :'/transactions';
+export function transactionPath(
+  role:StaffRole,
+  roomId?:string
+){
+  const base=
+    role==='employee'
+      ?'/employee/transactions'
+      :'/transactions';
+
+  return roomId
+    ?`${base}?room=${encodeURIComponent(roomId)}`
+    :base;
 }
