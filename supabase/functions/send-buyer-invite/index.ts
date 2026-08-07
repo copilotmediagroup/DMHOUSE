@@ -61,7 +61,7 @@ Deno.serve(async(req)=>{
     }).eq('id',documentId);
     if(documentUpdate.error)throw documentUpdate.error;
 
-    const redeem=`${url}/functions/v1/redeem-buyer-invite?token=${encodeURIComponent(data.rawToken)}`;
+    const redeem=`${app}/buyer/invite?token=${encodeURIComponent(data.rawToken)}`;
     const destination=`${app}/buyer/portfolio/${data.portfolioId}/documents`;
     const body=`<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#172033">
       <p style="font-size:12px;letter-spacing:.18em;color:#2563eb;font-weight:700">DATA MARKET HOUSE</p>

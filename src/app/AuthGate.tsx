@@ -19,6 +19,8 @@ export default function AuthGate({children}:{children:ReactNode}){
 
   const location=useLocation();
   const buyerPath=location.pathname==='/buyer'||location.pathname.startsWith('/buyer/');
+  const buyerInviteEntry=location.pathname==='/buyer/invite';
+  const inviteToken=useMemo(()=>new URLSearchParams(location.search).get('token')?.trim()||'',[location.search]);
   const callbackAtBoot=useMemo(()=>hasAuthCallback(),[]);
   const [ready,setReady]=useState(false);
   const [session,setSession]=useState<any>(null);
@@ -28,6 +30,34 @@ export default function AuthGate({children}:{children:ReactNode}){
   const [accountType,setAccountType]=useState<'owner'|'employee'|'buyer'>(buyerPath?'buyer':'owner');
 
   useEffect(()=>{
+    if(!buyerInviteEntry)return;
+
+    let cancelled=false;
+
+    void (async()=>{
+      if(!inviteToken){
+        window.location.replace('/buyer?inviteError='+encodeURIComponent('Invitation token is missing.'));
+        return;
+      }
+
+      const {error:signOutError}=await supabase.auth.signOut({scope:'local'});
+
+      if(cancelled)return;
+
+      if(signOutError){
+        window.location.replace('/buyer?inviteError='+encodeURIComponent(signOutError.message));
+        return;
+      }
+
+      const base=(import.meta.env.VITE_SUPABASE_URL||'').replace(/\/$/,'');
+      window.location.replace(`${base}/functions/v1/redeem-buyer-invite?token=${encodeURIComponent(inviteToken)}`);
+    })();
+
+    return()=>{cancelled=true};
+  },[buyerInviteEntry,inviteToken]);
+
+  useEffect(()=>{
+    if(buyerInviteEntry)return;
     let active=true;
     let callbackResolved=!callbackAtBoot;
     const finish=(nextSession:any)=>{if(!active)return;setSession(nextSession);setReady(true)};
@@ -52,7 +82,7 @@ export default function AuthGate({children}:{children:ReactNode}){
     });
 
     return()=>{active=false;data.subscription.unsubscribe()};
-  },[callbackAtBoot]);
+  },[callbackAtBoot,buyerInviteEntry]);
 
   async function submit(e:FormEvent<HTMLFormElement>){
     e.preventDefault();setBusy(true);setError('');
@@ -71,6 +101,7 @@ export default function AuthGate({children}:{children:ReactNode}){
     setBusy(false);
   }
 
+  if(buyerInviteEntry)return <GatewayLoading buyer/>;
   if(!ready)return <GatewayLoading buyer={buyerPath||callbackAtBoot}/>;
   if(session)return <>{children}</>;
 
