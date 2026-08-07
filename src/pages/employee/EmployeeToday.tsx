@@ -7,6 +7,8 @@ import { useClosingStore } from '../../store/ClosingStore';
 import { useConversationStore } from '../../store/ConversationStore';
 import { usePipelineStore } from '../../store/PipelineStore';
 import { usePortfolioStore } from '../../store/PortfolioStore';
+import { useTransactionIntelligence } from '../../hooks/useTransactionIntelligence';
+import { transactionPath } from '../../lib/transactionIntelligence';
 
 const money = (value: number) => new Intl.NumberFormat('en-US', {
   style: 'currency',
@@ -32,6 +34,10 @@ export default function EmployeeToday() {
   const { opportunities } = usePipelineStore();
   const { conversations, messages } = useConversationStore();
   const { reservations, commissions } = useClosingStore();
+  const {
+    items:transactionItems,
+    actionable:transactionActions
+  }=useTransactionIntelligence();
 
   if (!profile) return null;
 
@@ -65,13 +71,58 @@ export default function EmployeeToday() {
       : active.employeeCommissionValue
     : 0;
 
-  const nextAction = unreadReplies.length
-    ? { label: 'Reply to a buyer', detail: `${unreadReplies.length} unread buyer repl${unreadReplies.length === 1 ? 'y' : 'ies'} need attention.`, path: '/employee/conversations', action: 'Open Messages', icon: <Mail/> }
-    : overdue.length
-      ? { label: `Follow up with ${overdue[0].agency.name}`, detail: `${overdue.length} overdue follow-up${overdue.length === 1 ? '' : 's'} in your agency inventory.`, path: `/employee/agencies/${overdue[0].agency.id}`, action: 'Open Agency', icon: <AlertTriangle/> }
-      : activeClosings.length
-        ? { label: `Advance ${activeClosings[0].agencyName}`, detail: 'A closing is active and waiting for its next required step.', path: '/employee/closings', action: 'Open Closings', icon: <BriefcaseBusiness/> }
-        : { label: 'Build the next buyer relationship', detail: 'Add or search for an agency and begin a focused sales conversation.', path: '/employee/agencies', action: 'Open Agencies', icon: <Search/> };
+  const transactionAction=transactionActions[0];
+  const waitingTransaction=transactionItems.find(
+    item=>!item.complete
+  );
+
+  const nextAction = transactionAction
+    ?{
+        label:transactionAction.headline,
+        detail:`${transactionAction.transaction.buyer_company} · ${transactionAction.transaction.portfolio_name}. ${transactionAction.detail}`,
+        path:transactionPath('employee'),
+        action:transactionAction.buttonLabel||'Open Transaction',
+        icon:<FileSignature/>
+      }
+    :unreadReplies.length
+      ?{
+          label:'Reply to a buyer',
+          detail:`${unreadReplies.length} unread buyer repl${unreadReplies.length===1?'y':'ies'} need attention.`,
+          path:'/employee/conversations',
+          action:'Open Communications',
+          icon:<Mail/>
+        }
+      :overdue.length
+        ?{
+            label:`Follow up with ${overdue[0].agency.name}`,
+            detail:`${overdue.length} overdue follow-up${overdue.length===1?'':'s'} in your agency inventory.`,
+            path:`/employee/agencies/${overdue[0].agency.id}`,
+            action:'Open Agency',
+            icon:<AlertTriangle/>
+          }
+        :waitingTransaction
+          ?{
+              label:waitingTransaction.headline,
+              detail:`${waitingTransaction.transaction.buyer_company} · ${waitingTransaction.transaction.portfolio_name}. ${waitingTransaction.detail}`,
+              path:transactionPath('employee'),
+              action:'Open Transaction',
+              icon:<Clock3/>
+            }
+          :activeClosings.length
+            ?{
+                label:`Advance ${activeClosings[0].agencyName}`,
+                detail:'A closing is active and waiting for its next required step.',
+                path:'/employee/transactions',
+                action:'Open Transaction',
+                icon:<BriefcaseBusiness/>
+              }
+            :{
+                label:'Build the next buyer relationship',
+                detail:'Add or search for an agency and begin a focused sales conversation.',
+                path:'/employee/agencies',
+                action:'Open Agencies',
+                icon:<Search/>
+              };
 
   return (
     <div className="mx-auto max-w-7xl p-5 md:p-8 lg:p-10">
@@ -99,7 +150,18 @@ export default function EmployeeToday() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Queue icon={<Mail size={18}/>} label="Buyer replies" value={unreadReplies.length} detail="Need your response" tone={unreadReplies.length ? 'red' : 'slate'} path="/employee/conversations"/>
         <Queue icon={<Clock3 size={18}/>} label="Follow-ups" value={overdue.length + dueToday.length} detail={`${overdue.length} overdue · ${dueToday.length} today`} tone={overdue.length ? 'amber' : 'blue'} path="/employee/agencies"/>
-        <Queue icon={<BriefcaseBusiness size={18}/>} label="Active deals" value={openDeals.length} detail={`${activeClosings.length} in closing`} tone="blue" path="/employee/pipeline"/>
+        <Queue
+          icon={<FileSignature size={18}/>}
+          label="Transaction actions"
+          value={transactionActions.length}
+          detail={
+            transactionActions.length
+              ?'Need your action now'
+              :`${transactionItems.filter(item=>!item.complete).length} active transactions`
+          }
+          tone={transactionActions.length?'amber':'blue'}
+          path="/employee/transactions"
+        />
         <Queue icon={<WalletCards size={18}/>} label="Pending earnings" value={money(pendingCommission)} detail="Recorded commissions" tone="emerald" path="/employee/earnings"/>
       </div>
 
@@ -132,8 +194,8 @@ export default function EmployeeToday() {
           <div className="mt-6 space-y-3">
             <Step number="1" title="Choose an agency" detail="Search or add the buyer inside Agencies." path="/employee/agencies"/>
             <Step number="2" title="Start the conversation" detail="Email and buyer replies stay inside Messages." path="/employee/conversations"/>
-            <Step number="3" title="Move the deal" detail="Track the offer and negotiation in Deals." path="/employee/pipeline"/>
-            <Step number="4" title="Send documents" detail="Prepare the NDA and purchase agreement." path="/employee/documents" icon={<FileSignature size={16}/>}/>
+            <Step number="3" title="Move the transaction" detail="DMHOUSE shows the exact next action inside Transaction Desk." path="/employee/transactions"/>
+            <Step number="4" title="Follow the guided closing" detail="NDA, Purchase Agreement, payment and final release stay in one transaction." path="/employee/transactions" icon={<FileSignature size={16}/>}/>
             <Step number="5" title="Close and get paid" detail="Finish funding steps and track commission." path="/employee/closings"/>
           </div>
         </Card>
