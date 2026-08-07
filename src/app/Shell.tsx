@@ -52,26 +52,10 @@ const ownerPrimary: readonly NavItem[] = [
 ['Conversations', '/conversations', MessageSquareText],
 ['Revenue', '/revenue', CircleDollarSign],
 ['Employees', '/employees', Users],
+['Settings', '/settings/payment', Settings],
 ]
 
-const ownerAdvanced: readonly NavItem[] = [
-  ['Forecast', '/forecast', BarChart3],
-  ['Distributions', '/distributions', Send],
-  ['Email Templates', '/templates', Mail],
-  ['Portfolio Matching', '/matching', Target],
-  ['Campaigns', '/campaigns', Inbox],
-  ['Reply Command', '/replies', Inbox],
-  ['AS-IS Review', '/as-is-review', FileWarning],
-  ['Negotiations', '/negotiations', CircleDollarSign],
-  ['Assignments', '/assignments', ArrowRightLeft],
-  ['Performance', '/analytics', BarChart3],
-  ['Automation', '/automation', Workflow],
-  ['Deal Risk', '/risk', ShieldAlert],
-  ['Deal Execution', '/execution', ListChecks],
-  ['Deal Recovery', '/recovery', RotateCcw],
-  ['Agreement Sandbox', '/developer/agreements', FileSignature],
-  ['Audit', '/audit', LockKeyhole],
-];
+const ownerAdvanced: readonly NavItem[] = [];
 
 const buyerNav: readonly NavItem[] = [
   ['Workspace', '/buyer', LayoutDashboard],

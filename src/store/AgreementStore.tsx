@@ -9,6 +9,15 @@ export type AgreementFields={
   purchasePrice:string;priceBasis:string;saleType:string;mediaIncluded:string;stateCoverage:string;
   permittedUse:string;confidentialityPeriod:string;governingState:string;effectiveDate:string;expirationDate:string;
   paymentTerms:string;deliveryMethod:string;deliveryDeadline:string;specialConditions:string;customClauses:string;
+  wireBeneficiary?:string;
+  wireBankName?:string;
+  wireBankAddress?:string;
+  wireRoutingNumber?:string;
+  wireAccountNumber?:string;
+  wireSwiftBic?:string;
+  wireReference?:string;
+  wirePaymentDeadline?:string;
+  wireAdditionalInstructions?:string;
 };
 export type GeneratedAgreement={id:string;document_type:AgreementType;title:string;status:string;field_values:AgreementFields;rendered_html:string;seller_name?:string;seller_title?:string;seller_signature_style?:string;seller_signed_at?:string;buyer_name?:string;buyer_title?:string;buyer_signature_style?:string;buyer_signed_at?:string;created_at:string};
 type Store={upsertBuyer:(args:{email:string;companyName:string;contactName:string;title?:string;phone?:string})=>Promise<string>;workflowState:(id:string)=>Promise<any>;save:(args:{documentId?:string;roomId?:string;buyerId?:string;portfolioId?:string;type:AgreementType;title:string;fields:AgreementFields;html:string})=>Promise<string>;sign:(id:string,name:string,title:string,style:string)=>Promise<void>;send:(id:string,subject:string,message?:string)=>Promise<any>;history:(id:string)=>Promise<any[]>;listForPortfolio:(portfolioId:string)=>Promise<GeneratedAgreement[]>;listBuyerDocuments:(portfolioId:string)=>Promise<GeneratedAgreement[]>};

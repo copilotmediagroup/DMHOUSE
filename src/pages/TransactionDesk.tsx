@@ -205,13 +205,39 @@ export default function TransactionDesk(){
 
       let documentId=t.purchase_document_id||'';
 
+      const {data:paymentSettings,error:paymentError}=
+        await supabase.rpc('dmh_get_company_payment_settings');
+
+      if(paymentError)throw paymentError;
+
+      if(
+        !paymentSettings?.beneficiary_name||
+        !paymentSettings?.bank_name||
+        !paymentSettings?.routing_number||
+        !paymentSettings?.account_number
+      ){
+        throw new Error(
+          'Owner must complete Payment & Wire Instructions before a Purchase Agreement can be sent.'
+        );
+      }
+
       const fields:AgreementFields={
         ...t.nda_field_values,
-        paymentTerms:
-          t.nda_field_values.paymentTerms||
-          'Payment in full before final-file release',
         deliveryMethod:'Secure Deal Room',
-        deliveryDeadline:'After confirmed payment'
+        deliveryDeadline:'After confirmed payment',
+        paymentTerms:
+          paymentSettings.payment_terms||
+          'Payment in full by wire transfer before final portfolio release.',
+        wireBeneficiary:paymentSettings.beneficiary_name||'',
+        wireBankName:paymentSettings.bank_name||'',
+        wireBankAddress:paymentSettings.bank_address||'',
+        wireRoutingNumber:paymentSettings.routing_number||'',
+        wireAccountNumber:paymentSettings.account_number||'',
+        wireSwiftBic:paymentSettings.swift_bic||'',
+        wireReference:paymentSettings.wire_reference||'',
+        wirePaymentDeadline:paymentSettings.payment_deadline||'',
+        wireAdditionalInstructions:
+          paymentSettings.additional_instructions||''
       };
 
       if(!documentId){
