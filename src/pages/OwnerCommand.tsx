@@ -17,6 +17,7 @@ import {usePerformanceStore} from '../store/PerformanceStore';
 import {useRevenueStore} from '../store/RevenueStore';
 import {useTransactionAutomation} from '../store/TransactionAutomationStore';
 import {assessDealRisk} from '../engines/dealRisk';
+import {useTransactionIntelligence} from '../hooks/useTransactionIntelligence';
 
 const money=(n:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n);
 const title=(v:string)=>v.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
@@ -26,10 +27,59 @@ const isSince=(value:string|undefined,time:number)=>Boolean(value&&new Date(valu
 const daysUntil=(value?:string)=>value?Math.ceil((new Date(value).getTime()-Date.now())/dayMs):999;
 
 export default function OwnerCommand(){
+ const {
+   items:transactionItems,
+   loading:transactionLoading,
+   refresh:refreshTransactions
+ }=useTransactionIntelligence();
  const pipeline=usePipelineStore();const negotiation=useNegotiationStore();const approval=useApprovalStore();const closing=useClosingStore();const revenue=useRevenueStore();const performance=usePerformanceStore();const automation=useTransactionAutomation();const agency=useAgencyStore();const conversation=useConversationStore();
  const [drillDown,setDrillDown]=useState<ExecutiveDrillDown|null>(null);
- const loading=pipeline.loading||negotiation.loading||approval.loading||closing.loading||revenue.loading||performance.loading||automation.loading||agency.loading||conversation.loading;
- const refresh=async()=>{await Promise.all([pipeline.refresh(),negotiation.refresh(),approval.refresh(),closing.refresh(),revenue.refresh(),performance.refresh(),automation.refresh(),agency.refresh(),conversation.refresh()])};
+ const loading=pipeline.loading||negotiation.loading||approval.loading||closing.loading||revenue.loading||performance.loading||automation.loading||agency.loading||conversation.loading||transactionLoading;
+ const refresh=async()=>{await Promise.all([pipeline.refresh(),negotiation.refresh(),approval.refresh(),closing.refresh(),revenue.refresh(),performance.refresh(),automation.refresh(),agency.refresh(),conversation.refresh(),refreshTransactions()])};
+ const transactionPriorities=useMemo<ExecutiveQueueItem[]>(()=>{
+  return transactionItems
+   .filter(item=>!item.complete)
+   .sort((a,b)=>{
+     const aOwner=a.actionOwner==='owner'?1:0;
+     const bOwner=b.actionOwner==='owner'?1:0;
+
+     if(aOwner!==bOwner)return bOwner-aOwner;
+
+     return b.priority-a.priority;
+   })
+   .slice(0,8)
+   .map(item=>{
+     const t=item.transaction;
+
+     const ownerAction=item.actionOwner==='owner';
+
+     const meta=
+       item.actionOwner==='owner'
+         ?'OWNER ACTION'
+         :item.actionOwner==='employee'
+           ?'WAITING ON EMPLOYEE'
+           :item.actionOwner==='buyer'
+             ?'WAITING ON BUYER'
+             :item.actionOwner==='system'
+               ?'SYSTEM PROCESSING'
+               :'ACTIVE';
+
+     return {
+       id:`transaction-${t.room_id}`,
+       title:item.headline,
+       detail:`${t.buyer_company} · ${t.portfolio_name} · ${money(t.asking_price)} · ${item.detail}`,
+       meta,
+       path:'/transactions',
+       tone:
+         ownerAction&&item.action==='confirm_payment'
+           ?'danger'
+           :ownerAction
+             ?'warning'
+             :'default'
+     };
+   });
+ },[transactionItems]);
+
  const vm=useMemo(()=>{
   const today=startOfDay();const week=today-6*dayMs;const month=new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime();
   const openStages=new Set(PIPELINE_STAGES.filter(s=>!['closed_won','closed_lost'].includes(s)));
@@ -78,5 +128,21 @@ export default function OwnerCommand(){
   ].sort((a,b)=>new Date(b.occurredAt).getTime()-new Date(a.occurredAt).getTime());
   return{metrics,stages,totalPipeline,weighted,approvals,risk,leaderboard,activity};
  },[pipeline.opportunities,negotiation.offers,approval.requests,closing.reservations,revenue.sales,performance.employees,automation.alerts,agency.agencies,conversation.messages]);
- return <div className="mx-auto max-w-[1800px] p-5 md:p-8 lg:p-10"><header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between"><div><p className="text-sm font-semibold text-blue-600">Executive Command Center · v2.9.0</p><h2 className="mt-1 text-3xl font-semibold tracking-tight md:text-4xl">The entire company, one screen.</h2><p className="mt-2 max-w-3xl text-slate-500">Revenue, pipeline, buyer health, employee performance, transaction risk and today’s operating queues—derived from the existing Sales OS engines.</p></div><PrimaryButton onClick={()=>void refresh()} disabled={loading}><RefreshCw size={17} className={`mr-2 ${loading?'animate-spin':''}`}/>Refresh command</PrimaryButton></header><div className="mt-7"><ExecutiveMetricGrid metrics={vm.metrics} onDrillDown={setDrillDown}/></div><section className="mt-7 grid gap-6 xl:grid-cols-[1.35fr_.65fr]"><ExecutiveForecastPanel stages={vm.stages} total={vm.totalPipeline} weighted={vm.weighted}/><ExecutiveQueuePanel title="Employee leaderboard" eyebrow="Sales performance" items={vm.leaderboard} emptyText="No employee performance has been recorded yet."/></section><section className="mt-7 grid gap-6 xl:grid-cols-3"><ExecutiveQueuePanel title="Approval queue" eyebrow="Owner decisions" items={vm.approvals} emptyText="No approvals are waiting."/><ExecutiveQueuePanel title="Critical operating queue" eyebrow="Risk and deadlines" items={vm.risk} emptyText="No critical risks or stalled transactions."/><ExecutiveActivityFeed items={vm.activity}/></section><ExecutiveDrillDownDrawer drillDown={drillDown} onClose={()=>setDrillDown(null)}/></div>
+ return <div className="mx-auto max-w-[1800px] p-5 md:p-8 lg:p-10"><header className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between"><div><p className="text-sm font-semibold text-blue-600">Executive Command Center · v2.9.0</p><h2 className="mt-1 text-3xl font-semibold tracking-tight md:text-4xl">The entire company, one screen.</h2><p className="mt-2 max-w-3xl text-slate-500">Revenue, pipeline, buyer health, employee performance, transaction risk and today’s operating queues—derived from the existing Sales OS engines.</p></div><PrimaryButton onClick={()=>void refresh()} disabled={loading}><RefreshCw size={17} className={`mr-2 ${loading?'animate-spin':''}`}/>Refresh command</PrimaryButton></header>
+
+<section className="mt-7">
+  <ExecutiveQueuePanel
+    title="Owner transaction priorities"
+    eyebrow="What needs your attention now"
+    items={transactionPriorities}
+    emptyText="No active transaction requires attention."
+  />
+</section>
+
+<div className="mt-7">
+  <ExecutiveMetricGrid
+    metrics={vm.metrics}
+    onDrillDown={setDrillDown}
+  />
+</div><section className="mt-7 grid gap-6 xl:grid-cols-[1.35fr_.65fr]"><ExecutiveForecastPanel stages={vm.stages} total={vm.totalPipeline} weighted={vm.weighted}/><ExecutiveQueuePanel title="Employee leaderboard" eyebrow="Sales performance" items={vm.leaderboard} emptyText="No employee performance has been recorded yet."/></section><section className="mt-7 grid gap-6 xl:grid-cols-3"><ExecutiveQueuePanel title="Approval queue" eyebrow="Owner decisions" items={vm.approvals} emptyText="No approvals are waiting."/><ExecutiveQueuePanel title="Critical operating queue" eyebrow="Risk and deadlines" items={vm.risk} emptyText="No critical risks or stalled transactions."/><ExecutiveActivityFeed items={vm.activity}/></section><ExecutiveDrillDownDrawer drillDown={drillDown} onClose={()=>setDrillDown(null)}/></div>
 }
