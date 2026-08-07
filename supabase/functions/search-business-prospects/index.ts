@@ -175,8 +175,30 @@ Deno.serve(async (request: Request) => {
       );
 
     if (rows.length) {
-      const { error: insertError } = await admin.from('prospect_search_results').insert(rows);
-      if (insertError) throw new Error(insertError.message);
+      const seen = new Set<string>();
+
+      const uniqueRows = rows.filter((row: any) => {
+        if (!row.provider_place_id) {
+          return true;
+        }
+
+        const key = `${row.search_id}:${row.provider_place_id}`;
+
+        if (seen.has(key)) {
+          return false;
+        }
+
+        seen.add(key);
+        return true;
+      });
+
+      const { error: insertError } = await admin
+        .from('prospect_search_results')
+        .insert(uniqueRows);
+
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
     }
 
     const completedAt = new Date().toISOString();
@@ -332,18 +354,46 @@ function normalizeProspect(
     ) || 'Unnamed business';
 
   const website = nullableString(
-    deepFindValue(item, ['website', 'site', 'web', 'business_website']),
+    deepFindValue(item, [
+  'website',
+  'site',
+  'web',
+  'business_website',
+  'domain'
+]),
   );
   const domain = normalizeDomain(website);
   const phone = nullableString(
-    deepFindValue(item, ['phone', 'phone_number', 'phoneNumber', 'telephone']),
+    deepFindValue(item, [
+  'phone',
+  'phone_number',
+  'phoneNumber',
+  'telephone',
+  'phones',
+  'mobile'
+]),
   );
   const address = nullableString(
-    deepFindValue(item, ['address', 'full_address', 'fullAddress', 'formatted_address']),
+    deepFindValue(item, [
+  'address',
+  'full_address',
+  'fullAddress',
+  'fulladdress',
+  'formatted_address',
+  'street_address'
+]),
   );
   const email = extractEmail(item);
   const providerPlaceId = nullableString(
-    deepFindValue(item, ['place_id', 'placeId', 'google_place_id', 'cid', 'data_id', 'fid']),
+    deepFindValue(item, [
+  'place_id',
+  'placeId',
+  'google_place_id',
+  'cid',
+  'data_id',
+  'fid',
+  'kgmid'
+]),
   );
 
   const matched =
@@ -365,21 +415,59 @@ function normalizeProspect(
     provider_place_id: providerPlaceId,
     name,
     category: nullableString(
-      deepFindValue(item, ['category', 'type', 'business_category', 'main_category']),
+      deepFindValue(item, [
+  'category',
+  'categories',
+  'type',
+  'business_category',
+  'main_category'
+]),
     ),
     address,
-    city: nullableString(deepFindValue(item, ['city', 'locality'])),
-    state: nullableString(deepFindValue(item, ['state', 'region', 'administrative_area'])),
+    city: nullableString(
+  deepFindValue(item, [
+    'city',
+    'locality',
+    'municipality',
+    'town'
+  ])
+),
+    state: nullableString(
+  deepFindValue(item, [
+    'state',
+    'region',
+    'administrative_area',
+    'administrative_area_level_1'
+  ])
+),
     phone,
     website,
     domain,
     email,
     source_url: nullableString(
-      deepFindValue(item, ['url', 'link', 'google_maps_url', 'googleMapsUrl', 'maps_url']),
+      deepFindValue(item, [
+  'url',
+  'link',
+  'google_maps_url',
+  'googleMapsUrl',
+  'maps_url',
+  'google_url'
+]),
     ),
-    rating: numberValue(deepFindValue(item, ['rating', 'stars'])),
+    rating: numberValue(
+  deepFindValue(item, [
+    'rating',
+    'stars',
+    'average_rating'
+  ])
+),
     review_count: integerValue(
-      deepFindValue(item, ['reviews', 'review_count', 'reviewCount', 'reviews_count']),
+      deepFindValue(item, [
+  'reviews',
+  'review_count',
+  'reviewCount',
+  'reviews_count'
+]),
     ),
     latitude: numberValue(deepFindValue(item, ['latitude', 'lat'])),
     longitude: numberValue(deepFindValue(item, ['longitude', 'lng', 'lon'])),
@@ -466,40 +554,126 @@ function scoreBusinessArray(records: JsonRecord[]): number {
 }
 
 function extractEmail(item: JsonRecord): string | null {
-  const direct = nullableString(
-    deepFindValue(item, ['email', 'business_email', 'contact_email']),
-  );
-  if (direct?.includes('@')) return direct;
+  const direct = deepFindValue(item, [
+    'email',
+    'business_email',
+    'contact_email',
+    'email_address'
+  ]);
 
-  const emails = deepFindValue(item, ['emails']);
+  if (typeof direct === 'string' && direct.includes('@')) {
+    return direct.trim();
+  }
+
+  const emails = deepFindValue(item, [
+    'emails',
+    'email_addresses'
+  ]);
+
   if (Array.isArray(emails)) {
-    const found = emails.find((value) => typeof value === 'string' && value.includes('@'));
+    const found = emails.find(
+      value =>
+        typeof value === 'string' &&
+        value.includes('@')
+    );
+
     return nullableString(found);
   }
+
+  if (
+    typeof emails === 'string' &&
+    emails.includes('@')
+  ) {
+    return emails.trim();
+  }
+
   return null;
 }
+function normalizeProviderKey(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
 
-function deepFindValue(value: unknown, keys: string[], depth = 0): unknown {
-  if (depth > 5 || value == null) return null;
+function usableProviderValue(value: unknown): boolean {
+  if (value == null || value === '') return false;
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  return true;
+}
+
+function deepFindValue(
+  value: unknown,
+  keys: string[],
+  depth = 0
+): unknown {
+  if (depth > 6 || value == null) return null;
+
+  const wanted = new Set(
+    keys.map(normalizeProviderKey)
+  );
+
   if (Array.isArray(value)) {
     for (const item of value) {
       const found = deepFindValue(item, keys, depth + 1);
-      if (found != null && found !== '') return found;
+
+      if (usableProviderValue(found)) {
+        return found;
+      }
     }
+
     return null;
   }
+
   if (!isRecord(value)) return null;
-  for (const key of keys) {
-    const candidate = value[key];
-    if (candidate != null && candidate !== '') return candidate;
+
+  /*
+   * Match provider keys without depending on capitalization,
+   * spaces, underscores, or camelCase.
+   *
+   * Example:
+   * "Fulladdress", "full_address", and "fullAddress"
+   * all normalize to "fulladdress".
+   */
+  for (const [rawKey,candidate] of Object.entries(value)) {
+    if (
+      wanted.has(normalizeProviderKey(rawKey)) &&
+      usableProviderValue(candidate)
+    ) {
+      if (Array.isArray(candidate)) {
+        const scalar = candidate.find(
+          item =>
+            typeof item === 'string' ||
+            typeof item === 'number'
+        );
+
+        if (scalar != null) return scalar;
+      }
+
+      return candidate;
+    }
   }
+
+  /*
+   * Some provider fields are nested under details/contact/etc.
+   */
   for (const nested of Object.values(value)) {
-    const found = deepFindValue(nested, keys, depth + 1);
-    if (found != null && found !== '') return found;
+    const found = deepFindValue(
+      nested,
+      keys,
+      depth + 1
+    );
+
+    if (usableProviderValue(found)) {
+      return found;
+    }
   }
+
   return null;
 }
-
 function extractProviderError(payload: unknown): string | null {
   if (typeof payload === 'string') return payload.trim() || null;
   return nullableString(deepFindValue(payload, ['error', 'message', 'detail', 'description']));
