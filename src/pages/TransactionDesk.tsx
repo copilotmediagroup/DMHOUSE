@@ -240,14 +240,33 @@ export default function TransactionDesk(){
           paymentSettings.additional_instructions||''
       };
 
-      if(!documentId){
-        const html=buildAgreementHtml(
-          'purchase_agreement',
-          fields,
-          false
-        );
+      const html=buildAgreementHtml(
+        'purchase_agreement',
+        fields,
+        false
+      );
 
+      if(!documentId){
         documentId=await save({
+          roomId:t.room_id,
+          buyerId:t.nda_document_buyer_id||t.buyer_user_id||t.buyer_id,
+          portfolioId:t.portfolio_id,
+          type:'purchase_agreement',
+          title:`Purchase Agreement — ${t.portfolio_name}`,
+          fields,
+          html
+        });
+      }else{
+        const existingState=await workflowState(documentId);
+
+        if(existingState?.buyerSigned){
+          throw new Error(
+            'This Purchase Agreement has already been signed by the buyer and cannot be regenerated.'
+          );
+        }
+
+        await save({
+          documentId,
           roomId:t.room_id,
           buyerId:t.nda_document_buyer_id||t.buyer_user_id||t.buyer_id,
           portfolioId:t.portfolio_id,
