@@ -7,6 +7,7 @@ import {
   Inbox,
   Mail,
   MailCheck,
+  Plus,
   RefreshCw,
   Search,
   Send,
@@ -17,6 +18,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Card, Pill, PrimaryButton, SecondaryButton, inputClass } from '../components/Primitives';
 import { useAgencyStore } from '../store/AgencyStore';
 import { useConversationStore, type ConversationMessage } from '../store/ConversationStore';
+import { useOutreachStore } from '../store/OutreachStore';
 import { usePipelineStore } from '../store/PipelineStore';
 import { usePortfolioStore } from '../store/PortfolioStore';
 
@@ -51,7 +53,7 @@ type Thread = {
 };
 
 export default function ConversationCenter() {
-  const { profile } = usePortfolioStore();
+  const { profile, active } = usePortfolioStore();
   const owner = profile?.role === 'owner';
   const { agencies } = useAgencyStore();
   const { opportunities } = usePipelineStore();
@@ -60,6 +62,7 @@ export default function ConversationCenter() {
     conversations, messages, employees, tests, loading, syncing, error,
     syncInbox, setWorkflow, markRead, sendReply, addInternalNote, sendTest,
   } = useConversationStore();
+  const { templates, queueAndSendEmail } = useOutreachStore();
 
   const [selectedKey, setSelectedKey] = useState('');
   const [query, setQuery] = useState('');
@@ -70,7 +73,49 @@ export default function ConversationCenter() {
   const [notice, setNotice] = useState('');
   const [testOpen, setTestOpen] = useState(false);
 
-  const threads = useMemo<Thread[]>(() => {
+  const [composeOpen,setComposeOpen]=useState(false);
+  const [composeAgencyId,setComposeAgencyId]=useState('');
+  const [composeContactId,setComposeContactId]=useState('');
+  const [composeTemplateId,setComposeTemplateId]=useState('');
+  const [composeSubject,setComposeSubject]=useState('');
+  const [composeBody,setComposeBody]=useState('');
+  const [composeSending,setComposeSending]=useState(false);
+
+  const composeAgency=agencies.find(item=>item.id===composeAgencyId);
+  const composeContact=composeAgency?.contacts.find(item=>item.id===composeContactId);
+  const composeRecipient=composeContact?.email||composeAgency?.generalEmail||'';
+  const activeTemplates=templates.filter(item=>item.active);
+
+  function mergeComposeTemplate(text:string){
+    const values:Record<string,string>={
+      agency_name:composeAgency?.name||'',
+      contact_name:composeContact
+        ?[composeContact.firstName,composeContact.lastName].filter(Boolean).join(' ')
+        :'',
+      portfolio_name:active?.name||'',
+      account_count:active?active.accountCount.toLocaleString():'',
+      asking_price:active?`${active.askingPrice.toLocaleString()}`:'',
+      employee_name:(profile as any)?.full_name||(profile as any)?.name||''
+    };
+
+    return text.replace(
+      /{{\s*([a-z_]+)\s*}}/gi,
+      (_,key)=>values[key]||''
+    );
+  }
+
+  function chooseComposeTemplate(templateId:string){
+    setComposeTemplateId(templateId);
+
+    const template=templates.find(item=>item.id===templateId);
+
+    if(template){
+      setComposeSubject(mergeComposeTemplate(template.subject));
+      setComposeBody(mergeComposeTemplate(template.body));
+    }
+  }
+
+    const threads = useMemo<Thread[]>(() => {
     const grouped = new Map<string, ConversationMessage[]>();
     messages.forEach((message) => {
       if (message.direction === 'internal') return;
@@ -118,6 +163,24 @@ export default function ConversationCenter() {
     });
   }, [threads, query, filter]);
 
+  useEffect(()=>{
+    const requestedCompose=params.get('compose');
+    const requestedAgency=params.get('agency')||'';
+    const requestedContact=params.get('contact')||'';
+
+    if(requestedCompose==='1'){
+      setComposeOpen(true);
+
+      if(requestedAgency){
+        setComposeAgencyId(requestedAgency);
+      }
+
+      if(requestedContact){
+        setComposeContactId(requestedContact);
+      }
+    }
+  },[params]);
+
   useEffect(() => {
     const requested = params.get('conversation');
     const match = threads.find((thread) => thread.conversationId === requested);
@@ -141,7 +204,66 @@ export default function ConversationCenter() {
     if (thread.unread) await markRead(thread.conversationId, thread.key.startsWith('legacy:') ? undefined : thread.key);
   }
 
-  async function sendBuyerReply() {
+  async function sendNewEmail(){
+    if(!composeAgency){
+      setNotice('Choose an agency first.');
+      return;
+    }
+
+    if(!composeRecipient){
+      setNotice('This agency does not have an active email address.');
+      return;
+    }
+
+    if(!composeSubject.trim()){
+      setNotice('Enter a subject.');
+      return;
+    }
+
+    if(!composeBody.trim()){
+      setNotice('Write a message before sending.');
+      return;
+    }
+
+    setComposeSending(true);
+    setNotice('');
+
+    try{
+      await queueAndSendEmail({
+        agencyId:composeAgency.id,
+        contactId:composeContactId||undefined,
+        portfolioId:active?.id,
+        templateId:composeTemplateId||undefined,
+        recipient:composeRecipient,
+        subject:composeSubject.trim(),
+        body:composeBody.trim()
+      });
+
+      /*
+       * dmh_queue_outreach_email + send-outreach-email already create/update
+       * the real conversation + conversation_messages records.
+       *
+       * Reload this internal workspace so ConversationStore reads the new
+       * database state deterministically and the new thread appears first.
+       */
+      const destination=
+        window.location.pathname.startsWith('/employee')
+          ?'/employee/conversations'
+          :'/conversations';
+
+      window.location.assign(destination);
+
+    }catch(sendError){
+      setNotice(
+        sendError instanceof Error
+          ?sendError.message
+          :'Email could not be sent.'
+      );
+      setComposeSending(false);
+    }
+  }
+
+    async function sendBuyerReply() {
     if (!selected || !conversation || !agency || !reply.trim()) return;
     try {
       await sendReply(conversation.id, agency.id, selected.contactEmail, `Re: ${selected.subject}`, reply.trim(), selected.key.startsWith('legacy:') ? undefined : selected.key);
@@ -169,11 +291,22 @@ export default function ConversationCenter() {
     <div className="mx-auto max-w-[1720px] p-4 md:p-6">
       <header className="mb-5 flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <p className="text-sm font-semibold text-blue-600">Communications Hub · v5.0.0</p>
-          <h2 className="mt-1 text-3xl font-semibold">Buyer conversations</h2>
-          <p className="mt-1 text-slate-500">One contact. One subject. One unmistakable thread.</p>
+          <p className="text-sm font-semibold text-blue-600">DMHOUSE Communications</p>
+          <h2 className="mt-1 text-3xl font-semibold">Communications Hub</h2>
+          <p className="mt-1 text-slate-500">Start emails, manage replies, and keep every agency conversation inside DMHOUSE.</p>
         </div>
         <div className="flex gap-2">
+          <PrimaryButton
+            onClick={()=>{
+              setComposeOpen(true);
+              setSelectedKey('');
+              setNotice('');
+            }}
+          >
+            <Plus size={16} className="mr-2"/>
+            New Email
+          </PrimaryButton>
+
           <SecondaryButton disabled={syncing} onClick={async () => {
             try {
               const result = await syncInbox();
@@ -222,7 +355,180 @@ export default function ConversationCenter() {
         </aside>
 
         <main className="flex min-w-0 flex-col bg-slate-50">
-          {selected && conversation && agency ? <>
+          {composeOpen ? (
+            <div className="flex-1 overflow-y-auto p-5 md:p-8">
+              <div className="mx-auto max-w-3xl">
+
+                <div className="mb-6 flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[.16em] text-blue-600">
+                      NEW MESSAGE
+                    </p>
+                    <h3 className="mt-1 text-2xl font-semibold">
+                      Start an email conversation
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Email sends through your connected Data Market House Google Workspace account.
+                    </p>
+                  </div>
+
+                  <SecondaryButton
+                    onClick={()=>{
+                      setComposeOpen(false);
+                      setNotice('');
+                    }}
+                  >
+                    Cancel
+                  </SecondaryButton>
+                </div>
+
+                <Card className="p-5 md:p-7">
+                  <div className="grid gap-5 md:grid-cols-2">
+
+                    <label className="md:col-span-2">
+                      <span className="mb-2 block text-sm font-semibold">
+                        Agency
+                      </span>
+
+                      <select
+                        className={inputClass}
+                        value={composeAgencyId}
+                        onChange={event=>{
+                          setComposeAgencyId(event.target.value);
+                          setComposeContactId('');
+                          setComposeTemplateId('');
+                          setComposeSubject('');
+                          setComposeBody('');
+                        }}
+                      >
+                        <option value="">Choose an agency</option>
+
+                        {agencies
+                          .filter(item=>item.status!=='do_not_contact')
+                          .map(item=>(
+                            <option key={item.id} value={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+
+                    <label>
+                      <span className="mb-2 block text-sm font-semibold">
+                        Contact
+                      </span>
+
+                      <select
+                        className={inputClass}
+                        value={composeContactId}
+                        disabled={!composeAgency}
+                        onChange={event=>{
+                          setComposeContactId(event.target.value);
+                          setComposeTemplateId('');
+                        }}
+                      >
+                        <option value="">General company email</option>
+
+                        {composeAgency?.contacts
+                          .filter(item=>Boolean(item.email))
+                          .map(item=>(
+                            <option key={item.id} value={item.id}>
+                              {[item.firstName,item.lastName].filter(Boolean).join(' ')||item.email}
+                              {item.title?` — ${item.title}`:''}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+
+                    <div>
+                      <span className="mb-2 block text-sm font-semibold">
+                        To
+                      </span>
+
+                      <div className="flex min-h-[46px] items-center rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700">
+                        {composeRecipient||'No email available'}
+                      </div>
+                    </div>
+
+                    <label className="md:col-span-2">
+                      <span className="mb-2 block text-sm font-semibold">
+                        Template — optional
+                      </span>
+
+                      <select
+                        className={inputClass}
+                        value={composeTemplateId}
+                        onChange={event=>chooseComposeTemplate(event.target.value)}
+                      >
+                        <option value="">Write from scratch</option>
+
+                        {activeTemplates.map(item=>(
+                          <option key={item.id} value={item.id}>
+                            {item.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="md:col-span-2">
+                      <span className="mb-2 block text-sm font-semibold">
+                        Subject
+                      </span>
+
+                      <input
+                        className={inputClass}
+                        value={composeSubject}
+                        onChange={event=>setComposeSubject(event.target.value)}
+                        placeholder="Email subject"
+                      />
+                    </label>
+
+                    <label className="md:col-span-2">
+                      <span className="mb-2 block text-sm font-semibold">
+                        Message
+                      </span>
+
+                      <textarea
+                        className={`${inputClass} min-h-72`}
+                        value={composeBody}
+                        onChange={event=>setComposeBody(event.target.value)}
+                        placeholder="Write your message…"
+                      />
+                    </label>
+
+                    {active&&(
+                      <div className="md:col-span-2 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
+                        <strong>Linked portfolio:</strong> {active.name}
+                      </div>
+                    )}
+
+                    {notice&&(
+                      <div className="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-700">
+                        {notice}
+                      </div>
+                    )}
+
+                    <div className="md:col-span-2 flex justify-end">
+                      <PrimaryButton
+                        disabled={
+                          composeSending||
+                          !composeAgency||
+                          !composeRecipient||
+                          !composeSubject.trim()||
+                          !composeBody.trim()
+                        }
+                        onClick={()=>void sendNewEmail()}
+                      >
+                        <Send size={16} className="mr-2"/>
+                        {composeSending?'Sending…':'Send Email'}
+                      </PrimaryButton>
+                    </div>
+
+                  </div>
+                </Card>
+              </div>
+            </div>
+          ) : selected && conversation && agency ? <>
             <div className="border-b bg-white px-5 py-4">
               <div className="flex flex-col justify-between gap-3 md:flex-row md:items-start">
                 <div className="min-w-0">

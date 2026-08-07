@@ -434,7 +434,7 @@ function DealDrawer({ item, workspacePath, onClose, onEdit, onMove, nextStage }:
 
           <div className="grid grid-cols-2 gap-2">
             <a href={item.agency?.phone ? `tel:${item.agency.phone}` : undefined} className="flex items-center justify-center rounded-xl border border-slate-200 py-3 text-sm font-semibold hover:bg-slate-50"><Phone size={16} className="mr-2" /> Call</a>
-            <a href={item.agency?.generalEmail ? `mailto:${item.agency.generalEmail}` : undefined} className="flex items-center justify-center rounded-xl border border-slate-200 py-3 text-sm font-semibold hover:bg-slate-50"><Mail size={16} className="mr-2" /> Email</a>
+            <a href={item.agency?.generalEmail ? `${window.location.pathname.startsWith('/employee')?'/employee/conversations':'/conversations'}?compose=1&agency=${item.agency.id}` : undefined} className="flex items-center justify-center rounded-xl border border-slate-200 py-3 text-sm font-semibold hover:bg-slate-50"><Mail size={16} className="mr-2" /> Email</a>
           </div>
 
           <Link to={workspacePath} className="flex w-full items-center justify-center rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700">
