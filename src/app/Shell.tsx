@@ -44,21 +44,15 @@ import { supabase } from '../lib/supabase';
 type NavItem = readonly [label: string, to: string, icon: LucideIcon];
 
 const ownerPrimary: readonly NavItem[] = [
-  ['Command', '/', LayoutDashboard],
-  ['Portfolios', '/portfolios', BriefcaseBusiness],
-  ['Create Portfolio', '/portfolios/new', Plus],
-  ['Agencies', '/agencies', Building2],
-  ['Pipeline', '/pipeline', Columns3],
-  ['Outreach', '/outreach', Phone],
-  ['Follow-Ups', '/follow-ups', ClipboardList],
-  ['Conversations', '/conversations', MessageSquareText],
-  ['Deals', '/deals', Handshake],
-  ['Approvals', '/approvals', ShieldCheck],
-  ['Closings', '/closings', Landmark],
-  ['Revenue', '/revenue', CircleDollarSign],
-  ['Employees', '/employees', Users],
-  ['Buyer Portal', '/buyers', Store],
-];
+['Command', '/', LayoutDashboard],
+['Transactions', '/transactions', Handshake],
+['Portfolios', '/portfolios', BriefcaseBusiness],
+['Create Portfolio', '/portfolios/new', Plus],
+['Agencies', '/agencies', Building2],
+['Conversations', '/conversations', MessageSquareText],
+['Revenue', '/revenue', CircleDollarSign],
+['Employees', '/employees', Users],
+]
 
 const ownerAdvanced: readonly NavItem[] = [
   ['Forecast', '/forecast', BarChart3],
@@ -87,15 +81,13 @@ const buyerNav: readonly NavItem[] = [
 ];
 
 const employeeNav: readonly NavItem[] = [
-  ['Today', '/employee', LayoutDashboard],
-  ['Agencies', '/employee/agencies', Building2],
-  ['Portfolios', '/employee/portfolio', BriefcaseBusiness],
-  ['Messages', '/employee/conversations', MessageSquareText],
-  ['Deals', '/employee/pipeline', Handshake],
-  ['Documents', '/employee/documents', FileSignature],
-  ['Closings', '/employee/closings', Landmark],
-  ['Earnings', '/employee/earnings', WalletCards],
-];
+['Today', '/employee', LayoutDashboard],
+['Transactions', '/employee/transactions', Handshake],
+['Portfolios', '/employee/portfolio', BriefcaseBusiness],
+['Agencies', '/employee/agencies', Building2],
+['Messages', '/employee/conversations', MessageSquareText],
+['Earnings', '/employee/earnings', WalletCards],
+]
 
 function NavigationLink({ item, onNavigate }: { item: NavItem; onNavigate: () => void }) {
   const [label, to, Icon] = item;
