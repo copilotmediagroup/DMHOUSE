@@ -35,6 +35,7 @@ import {
   Users,
   Workflow,
   X,
+  MapPinned
 } from 'lucide-react';
 import { useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
@@ -52,6 +53,7 @@ const ownerPrimary: readonly NavItem[] = [
 ['Conversations', '/conversations', MessageSquareText],
 ['Revenue', '/revenue', CircleDollarSign],
 ['Employees', '/employees', Users],
+  ['Territories', '/territories', MapPinned],
 ['Settings', '/settings/payment', Settings],
 ]
 

@@ -142,6 +142,18 @@ export default function PortfolioDetail() {
 
   async function move(status: PortfolioStatus) {
     const result = await transition(portfolio.id, status);
+
+    if (
+      status === 'active' &&
+      !result.ok &&
+      result.message.toLowerCase().includes('as-is review')
+    ) {
+      nav(
+        `/as-is-review?portfolio=${encodeURIComponent(portfolio.id)}&activate=1&return=${encodeURIComponent(`/portfolios/${portfolio.id}`)}`
+      );
+      return;
+    }
+
     setNotice(result.message);
   }
 

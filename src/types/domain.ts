@@ -24,6 +24,16 @@ export interface Portfolio {
   category: string;
   accountCount: number;
   faceValue: number;
+
+  /** Automatically derived from uploaded portfolio data when available. */
+  principalBalance?: number;
+
+  /** Automatically derived average account balance. */
+  averageBalance?: number;
+
+  /** Single charge-off year or range, e.g. "2022" or "2021–2023". */
+  chargeOffYear?: string;
+
   askingPrice: number;
   privateMinimum: number;
   acquisitionCost: number;

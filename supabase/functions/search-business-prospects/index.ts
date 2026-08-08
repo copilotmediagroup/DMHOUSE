@@ -72,17 +72,132 @@ Deno.serve(async (request: Request) => {
     if (!profile.company_id) throw new Error('Employee is not connected to a company.');
 
     const body = await readJsonBody(request);
-    const query = cleanString(body.query || body.businessType || body.business_type);
-    const location = cleanString(body.location);
+
+    const query = cleanString(
+      body.query ||
+      body.businessType ||
+      body.business_type
+    );
+
+    const territoryId = cleanString(
+      body.territoryId ||
+      body.territory_id
+    );
+
     const requestedLimit = normalizeLimit(body.limit);
 
-    if (!query) throw new Error('Business type is required.');
-    if (!location) throw new Error('Location is required.');
+    if (!query) {
+      throw new Error('Business type is required.');
+    }
 
-    const resolved = await resolveLocation(admin, location);
-    const mapLocation = `@${resolved.latitude},${resolved.longitude},11z`;
+    if (!territoryId) {
+      throw new Error(
+        'An Owner-assigned territory is required before searching Google Maps.'
+      );
+    }
 
-    const { data: searchRecord, error: searchError } = await admin
+    /*
+     * =====================================================
+     * OWNER-ASSIGNED TERRITORY ENFORCEMENT
+     * =====================================================
+     *
+     * The browser does NOT control the location.
+     *
+     * Employee sends only the selected territory ID.
+     *
+     * This function loads the territory directly from the
+     * database and verifies:
+     *
+     * 1. Territory belongs to this company.
+     * 2. Territory belongs to this employee.
+     * 3. Territory is active.
+     * 4. Territory has started.
+     * 5. Territory has not expired.
+     *
+     * Stored territory coordinates then become the Maps
+     * search location.
+     *
+     * An employee cannot change the city through DevTools,
+     * API calls, or browser manipulation.
+     * =====================================================
+     */
+
+    const { data: territory, error: territoryError } = await admin
+      .from('employee_territories')
+      .select(
+        'id,company_id,employee_id,territory_name,center_address,center_latitude,center_longitude,radius_miles,starts_at,expires_at,status'
+      )
+      .eq('id', territoryId)
+      .eq('company_id', profile.company_id)
+      .eq('employee_id', user.id)
+      .maybeSingle();
+
+    if (territoryError) {
+      throw new Error(
+        `Territory verification failed: ${territoryError.message}`
+      );
+    }
+
+    if (!territory) {
+      throw new Error(
+        'This territory is not assigned to your employee account.'
+      );
+    }
+
+    if (territory.status !== 'active') {
+      throw new Error(
+        'This prospecting territory is not active. Contact the Owner.'
+      );
+    }
+
+    const now = Date.now();
+
+    const startsAt = new Date(territory.starts_at).getTime();
+
+    if (
+      Number.isFinite(startsAt) &&
+      startsAt > now
+    ) {
+      throw new Error(
+        'This prospecting territory has not started yet.'
+      );
+    }
+
+    if (territory.expires_at) {
+      const expiresAt = new Date(territory.expires_at).getTime();
+
+      if (
+        Number.isFinite(expiresAt) &&
+        expiresAt <= now
+      ) {
+        throw new Error(
+          'This prospecting territory has expired. Contact the Owner.'
+        );
+      }
+    }
+
+    const latitude = Number(territory.center_latitude);
+    const longitude = Number(territory.center_longitude);
+
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude)
+    ) {
+      throw new Error(
+        'Assigned territory does not contain valid map coordinates.'
+      );
+    }
+
+    /*
+     * Maps location comes ONLY from Owner-controlled database data.
+     */
+    const location =
+      cleanString(territory.center_address) ||
+      cleanString(territory.territory_name);
+
+    const mapLocation =
+      `@${latitude},${longitude},11z`;
+const { data: searchRecord, error: searchError } = await admin
       .from('prospect_searches')
       .insert({
         company_id: profile.company_id,
@@ -99,16 +214,7 @@ Deno.serve(async (request: Request) => {
       throw new Error(searchError?.message || 'Unable to create prospect search record.');
     }
     searchId = searchRecord.id;
-
-    console.log('Dynamic Maps search', {
-      query,
-      enteredLocation: location,
-      resolvedLocation: resolved.formattedLocation,
-      ll: mapLocation,
-      cacheHit: resolved.cacheHit,
-    });
-
-    const providerResults: JsonRecord[] = [];
+const providerResults: JsonRecord[] = [];
     let providerRequestId: string | null = null;
     const maximumPages = Math.min(Math.ceil(requestedLimit / 10), 20);
 
@@ -148,9 +254,7 @@ Deno.serve(async (request: Request) => {
       }
 
       const pageResults = extractBusinessRecords(payload);
-      console.log(`Extractor page ${page}`, { results: pageResults.length });
-
-      if (!pageResults.length) break;
+if (!pageResults.length) break;
       providerResults.push(...pageResults);
       if (providerResults.length >= requestedLimit) break;
     }
