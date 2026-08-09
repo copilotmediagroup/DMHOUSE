@@ -21,6 +21,58 @@ export default function DocumentStudio(){
   const {portfolios,active}=usePortfolioStore();
   const [type,setType]=useState<AgreementType>('nda');
   const [f,setF]=useState(initial);
+
+  /* DMHOUSE_AGENCY_NDA_PREFILL */
+  useEffect(()=>{
+
+    const params=
+      new URLSearchParams(
+        window.location.search
+      );
+
+    if(params.get('source')!=='agency'){
+      return;
+    }
+
+    const requestedType=
+      params.get('type');
+
+    if(requestedType==='nda'){
+      setType('nda');
+      setEmailSubject(
+        'NDA Ready for Review and Signature'
+      );
+      setEmailMessage(
+        'Your NDA is ready for review and electronic signature inside the Data Market House Buyer Portal.'
+      );
+    }
+
+    setF(previous=>({
+      ...previous,
+
+      buyerCompany:
+        params.get('company')||
+        previous.buyerCompany,
+
+      buyerName:
+        params.get('contact')||
+        previous.buyerName,
+
+      buyerEmail:
+        params.get('email')||
+        previous.buyerEmail,
+
+      buyerPhone:
+        params.get('phone')||
+        previous.buyerPhone,
+
+      portfolioName:
+        params.get('portfolioName')||
+        previous.portfolioName
+    }));
+
+  },[]);
+
   const [portfolioId,setPortfolioId]=useState(active?.id||'');
   const [documentId,setDocumentId]=useState('');
   const [message,setMessage]=useState('');

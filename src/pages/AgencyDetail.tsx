@@ -291,7 +291,7 @@ function formatDateTime(value:string){const d=new Date(value);return Number.isNa
 export default function AgencyDetail(){
   const {id}=useParams();
   const {get,loading,addContact,addActivity,reassign,release,updateChannel}=useAgencyStore();
-  const {role}=usePortfolioStore();
+  const {role,portfolios}=usePortfolioStore();
   const {opportunities}=usePipelineStore();
   const {offers}=useNegotiationStore();
   const {reservations,sales}=useClosingStore();
@@ -346,6 +346,16 @@ export default function AgencyDetail(){
   );
   const [panel,setPanel]=useState<'contact'|'activity'|null>(null);
   const [activityKind,setActivityKind]=useState<'call'|'email'|'note'>('call');
+
+  const [ndaLaunchOpen,setNdaLaunchOpen]=
+    useState(false);
+
+  const [ndaContactId,setNdaContactId]=
+    useState('');
+
+  const [ndaPortfolioId,setNdaPortfolioId]=
+    useState('');
+
 
   const [secureTransaction,setSecureTransaction]=
     useState<AgencySecureTransaction|null>(null);
@@ -664,6 +674,74 @@ export default function AgencyDetail(){
       :transactionBasePath;
 
   const websiteHref=externalUrl(agency.website);
+
+  const ndaAvailablePortfolios=
+    portfolios.filter(
+      portfolio=>
+        portfolio.status==='active'||
+        portfolio.status==='negotiating'
+    );
+
+  const ndaSelectedContact=
+    agency.contacts.find(
+      contact=>contact.id===ndaContactId
+    )
+    ||
+    agency.contacts.find(
+      contact=>Boolean(contact.email)
+    );
+
+  const ndaSelectedPortfolio=
+    ndaAvailablePortfolios.find(
+      portfolio=>portfolio.id===ndaPortfolioId
+    )
+    ||
+    ndaAvailablePortfolios[0];
+
+  const ndaEmail=
+    ndaSelectedContact?.email||
+    agency.generalEmail||
+    '';
+
+  const ndaContactName=
+    ndaSelectedContact
+      ?[ndaSelectedContact.firstName,ndaSelectedContact.lastName]
+          .filter(Boolean)
+          .join(' ')
+          .trim()
+      :'';
+
+  const ndaPhone=
+    ndaSelectedContact?.phone||
+    agency.phone||
+    '';
+
+  const canLaunchNda=
+    Boolean(
+      agency.name&&
+      ndaContactName&&
+      ndaEmail&&
+      ndaSelectedPortfolio
+    );
+
+  const ndaStudioPath=
+    canLaunchNda
+      ?'/employee/documents?'+
+        new URLSearchParams({
+          source:'agency',
+          type:'nda',
+          agencyId:agency.id,
+          company:agency.name,
+          contact:ndaContactName,
+          email:ndaEmail,
+          phone:ndaPhone,
+          portfolioId:
+            ndaSelectedPortfolio?.id||'',
+          portfolioName:
+            ndaSelectedPortfolio?.name||''
+        }).toString()
+      :'';
+
   const fullLocation=agency.address||[agency.city,agency.state].filter(Boolean).join(', ');
   const mapsHref=agency.sourceUrl?externalUrl(agency.sourceUrl):(fullLocation?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullLocation)}`:'');
   const namedDecisionMaker=agency.contacts.some(c=>c.decisionMaker||((c.firstName||'').toLowerCase()!=='general'&&Boolean(c.lastName)));
@@ -707,7 +785,211 @@ export default function AgencyDetail(){
       </div>
     </header>
 
-    {panel==='contact'&&<div className="mb-6"><ContactForm agencyId={agency.id} done={()=>setPanel(null)} add={addContact}/></div>}
+        {/* =====================================================
+        AGENCY NDA LAUNCH PANEL
+    ====================================================== */}
+
+    {ndaLaunchOpen&&(
+      <Card className="mb-6 border-emerald-200 p-6">
+
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+
+          <div>
+
+            <p className="text-xs font-bold uppercase tracking-[.16em] text-emerald-600">
+              Start secure transaction
+            </p>
+
+            <h2 className="mt-2 text-xl font-bold text-slate-950">
+              Send NDA to {agency.name}
+            </h2>
+
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              Select the buyer contact and portfolio. DMHOUSE will carry this information into the approved NDA workflow for review and sending.
+            </p>
+
+          </div>
+
+          <button
+            type="button"
+            onClick={()=>setNdaLaunchOpen(false)}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+
+        </div>
+
+
+        <div className="mt-6 grid gap-5 md:grid-cols-2">
+
+          <label className="block">
+
+            <span className="mb-2 block text-sm font-semibold text-slate-700">
+              Buyer contact
+            </span>
+
+            <select
+              value={
+                ndaContactId||
+                ndaSelectedContact?.id||
+                ''
+              }
+              onChange={event=>
+                setNdaContactId(
+                  event.target.value
+                )
+              }
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-400"
+            >
+
+              <option value="">
+                Select contact
+              </option>
+
+              {agency.contacts.map(contact=>(
+                <option
+                  key={contact.id}
+                  value={contact.id}
+                >
+                  {[contact.firstName,contact.lastName]
+                    .filter(Boolean)
+                    .join(' ')
+                    .trim()||'Unnamed contact'}
+                  {contact.email
+                    ?' — '+contact.email
+                    :' — no email'
+                  }
+                </option>
+              ))}
+
+            </select>
+
+          </label>
+
+
+          <label className="block">
+
+            <span className="mb-2 block text-sm font-semibold text-slate-700">
+              Portfolio
+            </span>
+
+            <select
+              value={
+                ndaPortfolioId||
+                ndaSelectedPortfolio?.id||
+                ''
+              }
+              onChange={event=>
+                setNdaPortfolioId(
+                  event.target.value
+                )
+              }
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-400"
+            >
+
+              <option value="">
+                Select portfolio
+              </option>
+
+              {ndaAvailablePortfolios.map(portfolio=>(
+                <option
+                  key={portfolio.id}
+                  value={portfolio.id}
+                >
+                  {portfolio.name}
+                </option>
+              ))}
+
+            </select>
+
+          </label>
+
+        </div>
+
+
+        <div className="mt-5 rounded-2xl bg-slate-50 p-4">
+
+          <div className="grid gap-3 text-sm md:grid-cols-3">
+
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                Company
+              </p>
+              <p className="mt-1 font-semibold text-slate-900">
+                {agency.name}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                Contact
+              </p>
+              <p className="mt-1 font-semibold text-slate-900">
+                {ndaContactName||'Missing'}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                Email
+              </p>
+              <p className="mt-1 font-semibold text-slate-900">
+                {ndaEmail||'Missing'}
+              </p>
+            </div>
+
+          </div>
+
+        </div>
+
+
+        {!agency.contacts.length&&(
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            Add a buyer contact to this agency before starting the NDA.
+          </div>
+        )}
+
+
+        {agency.contacts.length>0&&!ndaEmail&&(
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            The selected buyer contact needs a valid email address before the NDA can be sent.
+          </div>
+        )}
+
+
+        {!ndaAvailablePortfolios.length&&(
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            There is no active portfolio available for this transaction.
+          </div>
+        )}
+
+
+        <div className="mt-6 flex justify-end">
+
+          {canLaunchNda?(
+            <Link
+              to={ndaStudioPath}
+              className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-emerald-600 px-6 text-sm font-bold text-white hover:bg-emerald-700"
+            >
+              Review & Send NDA
+            </Link>
+          ):(
+            <button
+              type="button"
+              disabled
+              className="inline-flex min-h-11 cursor-not-allowed items-center justify-center rounded-2xl bg-slate-200 px-6 text-sm font-bold text-slate-400"
+            >
+              Complete Missing Information
+            </button>
+          )}
+
+        </div>
+
+      </Card>
+    )}
+
+{panel==='contact'&&<div className="mb-6"><ContactForm agencyId={agency.id} done={()=>setPanel(null)} add={addContact}/></div>}
     {panel==='activity'&&<div className="mb-6"><ActivityForm agency={agency} initialType={activityKind} done={()=>setPanel(null)} add={addActivity}/></div>}
 
     {/* =====================================================
@@ -746,6 +1028,25 @@ export default function AgencyDetail(){
 
 
           <div className="shrink-0">
+
+            {role==='employee'&&
+              !secureTransaction&&
+              (
+                salesExecution.key==='qualified'||
+                salesExecution.key==='portfolio_sent'||
+                salesExecution.key==='negotiating'||
+                salesExecution.key==='contracts'||
+                salesExecution.key==='offer'
+              )&&(
+                <button
+                  type="button"
+                  onClick={()=>setNdaLaunchOpen(true)}
+                  className="mb-2 inline-flex min-h-11 w-full items-center justify-center rounded-2xl bg-emerald-500 px-5 text-sm font-bold text-white transition hover:bg-emerald-600"
+                >
+                  Start NDA Process
+                </button>
+              )}
+
 
             {salesExecution.key==='complete'?(
               <Link
