@@ -17,6 +17,7 @@ import {
   SecondaryButton
 } from '../../components/Primitives';
 import {supabase} from '../../lib/supabase';
+import {useAgencyStore} from '../../store/AgencyStore';
 
 type Result={
   id:string;
@@ -74,6 +75,7 @@ function niceDate(value:string|null){
 
 export default function ProspectMode(){
   const navigate=useNavigate();
+  const {refresh:refreshAgencies}=useAgencyStore();
 
   const [query,setQuery]=useState('Debt collection agency');
   const [limit,setLimit]=useState(25);
@@ -275,6 +277,10 @@ export default function ProspectMode(){
 
     setSelected(new Set());
     setImporting(false);
+
+    if(successfulImports>0){
+      await refreshAgencies();
+    }
 
     if(
       successfulImports===1&&

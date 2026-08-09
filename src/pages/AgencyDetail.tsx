@@ -36,7 +36,7 @@ function formatDateTime(value:string){const d=new Date(value);return Number.isNa
 
 export default function AgencyDetail(){
   const {id}=useParams();
-  const {get,addContact,addActivity,reassign,release,updateChannel}=useAgencyStore();
+  const {get,loading,addContact,addActivity,reassign,release,updateChannel}=useAgencyStore();
   const {role}=usePortfolioStore();
   const agency=get(id||'');
   const [panel,setPanel]=useState<'contact'|'activity'|null>(null);
@@ -50,7 +50,26 @@ export default function AgencyDetail(){
 
 
   const back=role==='owner'?'/agencies':'/employee/agencies';
-  if(!agency)return <div className="p-10">Agency not found.</div>;
+  if(loading){
+    return (
+      <div className="grid min-h-[50vh] place-items-center p-10">
+        <div className="text-center">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"/>
+          <p className="mt-4 text-sm font-medium text-slate-500">
+            Loading agency…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if(!agency){
+    return (
+      <div className="p-10">
+        Agency not found.
+      </div>
+    );
+  }
 
   const websiteHref=externalUrl(agency.website);
   const fullLocation=agency.address||[agency.city,agency.state].filter(Boolean).join(', ');
