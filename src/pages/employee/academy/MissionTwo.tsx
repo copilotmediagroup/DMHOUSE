@@ -14,6 +14,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { usePracticeAttemptTelemetry } from './usePracticeAttemptTelemetry';
 
 type Props = {
   onBack: () => void;
@@ -598,6 +599,16 @@ export default function MissionTwo({
 
   const passed =
     percent >= 90;
+
+  usePracticeAttemptTelemetry({
+    missionNumber: 2,
+    attemptOpen: quizMode,
+    submitted,
+    scorePercent: percent,
+    questionCount: questions.length,
+    correctCount: score,
+    passed,
+  });
 
   function nextTerm() {
     if (

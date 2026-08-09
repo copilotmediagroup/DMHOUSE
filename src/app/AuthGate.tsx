@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 're
 import { useLocation } from 'react-router-dom';
 import { AlertTriangle, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
+import { useEmploymentAccessGuard } from '../hooks/useEmploymentAccessGuard';
 import { PrimaryButton, Card, Field, inputClass } from '../components/Primitives';
+import AcademyInviteRegistration from '../pages/academy/AcademyInviteRegistration';
 
 function hasAuthCallback(): boolean {
   const hash = window.location.hash;
@@ -15,6 +17,10 @@ function GatewayLoading({ buyer = false }: { buyer?: boolean }) {
 }
 
 export default function AuthGate({children}:{children:ReactNode}){
+
+  if (window.location.pathname === '/academy/invite') {
+    return <AcademyInviteRegistration />;
+  }
   if(!isSupabaseConfigured)return <div className="grid min-h-screen place-items-center bg-[#08101f] p-6 text-white"><div className="max-w-xl rounded-3xl border border-white/10 bg-white/5 p-8"><p className="text-xs font-semibold tracking-[.24em] text-blue-400">DMH SALES OS · V5.5</p><h1 className="mt-3 text-2xl font-semibold">Supabase connection required</h1><p className="mt-3 text-sm leading-6 text-slate-300">Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to Netlify, then redeploy.</p></div></div>;
 
   const location=useLocation();
@@ -28,6 +34,12 @@ export default function AuthGate({children}:{children:ReactNode}){
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
   const [accountType,setAccountType]=useState<'owner'|'employee'|'buyer'>(buyerPath?'buyer':'owner');
+
+useEmploymentAccessGuard(
+  session?.user?.id || null,
+  session?.user?.user_metadata?.account_type ||
+    accountType,
+);
 
   useEffect(()=>{
     if(!buyerInviteEntry)return;

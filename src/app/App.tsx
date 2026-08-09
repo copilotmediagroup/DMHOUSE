@@ -63,13 +63,12 @@ import DealRiskCommand from '../pages/owner/DealRiskCommand';
 import DealExecutionCommand from '../pages/owner/DealExecutionCommand';
 import DealRecoveryCommand from '../pages/owner/DealRecoveryCommand';
 import CompanyEmailSettings from '../pages/owner/CompanyEmailSettings';
+import AcademyExperience from '../pages/employee/academy/AcademyExperience';
+import EmploymentLockout from '../components/employment/EmploymentLockout';
 function LoadingWorkspace(){
   return <div className="grid min-h-screen place-items-center bg-[#08101f] p-6 text-white"><div className="text-center"><div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-blue-400 border-t-transparent"/><p className="mt-4 text-sm font-medium">Securing your workspace…</p></div></div>;
 }
 
-function AccountInactive(){
-  return <div className="grid min-h-screen place-items-center bg-[#08101f] p-6 text-white"><div className="max-w-md text-center"><LockKeyhole className="mx-auto text-blue-400" size={38}/><h1 className="mt-5 text-2xl font-semibold">Account inactive</h1><p className="mt-3 text-slate-400">The owner has paused this account. Contact Data Market House for access.</p></div></div>;
-}
 
 function AccessDenied({expected,actual}:{expected:'owner'|'employee'|'buyer';actual:string}){
   const navigate=useNavigate();
@@ -104,13 +103,71 @@ export default function App(){
   const location=useLocation();
   if(loading)return <LoadingWorkspace/>;
   if(!profile)return <LoadingWorkspace/>;
-  if(!profile.is_active)return <AccountInactive/>;
+  if (!profile.is_active) {
+    return (
+      <EmploymentLockout
+        userId={profile.id}
+        role={String(profile.role)}
+      />
+    );
+  }
 
-  const role=profile.role;
-  const requested=namespace(location.pathname);
-  if(requested&&requested!==role)return <AccessDenied expected={requested} actual={role}/>;
+  const requested = namespace(location.pathname);
+  const role = String(profile.role);
 
-  if(role==='buyer')return <BuyerShell><BuyerRoutes/></BuyerShell>;
-  if(role==='employee')return <Shell><EmployeeRoutes/></Shell>;
-  return <Shell><OwnerRoutes/></Shell>;
+  // PRE-CERTIFICATION EMPLOYEE
+  // Academy identities never enter any Sales OS shell.
+  if (role === 'academy') {
+    return <AcademyExperience />;
+  }
+
+  if (
+    requested &&
+    requested !== role
+  ) {
+    return (
+      <AccessDenied
+        expected={requested}
+        actual={role}
+      />
+    );
+  }
+
+  if (role === 'buyer') {
+    return (
+      <BuyerShell>
+        <BuyerRoutes />
+      </BuyerShell>
+    );
+  }
+
+  if (role === 'employee') {
+    return (
+      <Shell>
+        <EmployeeRoutes />
+      </Shell>
+    );
+  }
+
+  if (role === 'owner') {
+    return (
+      <Shell>
+        <OwnerRoutes />
+      </Shell>
+    );
+  }
+
+  return (
+    <div className="grid min-h-screen place-items-center bg-[#08101f] p-6 text-white">
+      <div className="max-w-lg text-center">
+        <h1 className="text-2xl font-semibold">
+          Account role unavailable
+        </h1>
+
+        <p className="mt-3 text-sm text-slate-300">
+          This account does not have a recognized DMHOUSE workspace role.
+        </p>
+      </div>
+    </div>
+  );
 }

@@ -16,9 +16,16 @@ import {
   useAcademy,
   type AcademyMissionStatus,
 } from '../../../store/AcademyStore';
+import {
+  formatActiveTime,
+  formatSeconds,
+  type AcademyLearningState,
+} from './useAcademyIntelligence';
 
 type Props = {
   onOpenMission: (missionNumber: number) => void;
+  intelligence: AcademyLearningState | null;
+  refreshIntelligence: () => Promise<void>;
 };
 
 type MissionDefinition = {
@@ -113,6 +120,7 @@ function statusLabel(
 
 export default function AcademyHome({
   onOpenMission,
+  intelligence,
 }: Props) {
   const { profile } =
     usePortfolioStore();
@@ -124,6 +132,33 @@ export default function AcademyHome({
     getMission,
     resetAcademy,
   } = useAcademy();
+
+  const learningExpired =
+    intelligence?.learningPace === 'expired';
+
+  const paceLabel =
+    intelligence?.learningPace === 'excellent'
+      ? 'Excellent Pace'
+      : intelligence?.learningPace === 'on_track'
+        ? 'On Track'
+        : intelligence?.learningPace === 'late'
+          ? 'Late'
+          : intelligence?.learningPace === 'expired'
+            ? 'Expired'
+            : intelligence?.learningPace === 'completed'
+              ? 'Learning Complete'
+              : 'Loading';
+
+  const paceClass =
+    intelligence?.learningPace === 'excellent'
+      ? 'bg-emerald-400/10 text-emerald-200 border-emerald-400/20'
+      : intelligence?.learningPace === 'on_track'
+        ? 'bg-blue-400/10 text-blue-200 border-blue-400/20'
+        : intelligence?.learningPace === 'late'
+          ? 'bg-amber-400/10 text-amber-200 border-amber-400/20'
+          : intelligence?.learningPace === 'expired'
+            ? 'bg-red-400/10 text-red-200 border-red-400/20'
+            : 'bg-white/10 text-slate-200 border-white/10';
 
   return (
     <div className="min-h-full bg-slate-50">
@@ -232,6 +267,84 @@ export default function AcademyHome({
             </div>
           </div>
         </header>
+
+        <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-3xl bg-slate-950 p-5 text-white">
+            <p className="text-xs font-bold uppercase tracking-[.16em] text-slate-400">
+              Academy Deadline
+            </p>
+
+            <p className="mt-2 font-mono text-2xl font-semibold">
+              {formatSeconds(
+                intelligence?.secondsUntilExpiration,
+              )}
+            </p>
+
+            <p className="mt-2 text-xs text-slate-400">
+              Hard deadline: 72 hours
+            </p>
+          </div>
+
+          <div className="rounded-3xl bg-white p-5 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-[.16em] text-slate-400">
+              Learning Pace
+            </p>
+
+            <span className={`mt-3 inline-flex rounded-full border px-3 py-1.5 text-xs font-bold ${paceClass}`}>
+              {paceLabel}
+            </span>
+
+            <p className="mt-3 text-xs text-slate-500">
+              0–24h excellent · 24–48h on track · 48–72h late
+            </p>
+          </div>
+
+          <div className="rounded-3xl bg-white p-5 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-[.16em] text-slate-400">
+              Active Learning
+            </p>
+
+            <p className="mt-2 text-2xl font-semibold text-slate-950">
+              {formatActiveTime(
+                intelligence?.activeLearningSeconds,
+              )}
+            </p>
+
+            <p className="mt-2 text-xs text-slate-500">
+              Time actually spent inside Missions 1–5
+            </p>
+          </div>
+
+          <div className="rounded-3xl bg-white p-5 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-[.16em] text-slate-400">
+              Practice Average
+            </p>
+
+            <p className="mt-2 text-2xl font-semibold text-slate-950">
+              {intelligence?.averagePracticeScore == null
+                ? '—'
+                : `${Number(
+                    intelligence.averagePracticeScore,
+                  ).toFixed(0)}%`}
+            </p>
+
+            <p className="mt-2 text-xs text-slate-500">
+              Successful Mission Check scores
+            </p>
+          </div>
+        </section>
+
+        {learningExpired && (
+          <div className="mt-5 rounded-3xl border border-red-200 bg-red-50 p-5">
+            <p className="font-semibold text-red-950">
+              Academy access window expired
+            </p>
+
+            <p className="mt-2 text-sm leading-6 text-red-800">
+              Your standard 72-hour learning window has ended. An Owner must extend your Academy deadline before additional learning or certification can continue.
+            </p>
+          </div>
+        )}
 
         <div className="mt-8 grid gap-7 xl:grid-cols-[1fr_330px]">
           <section>
@@ -347,45 +460,35 @@ export default function AcademyHome({
                           )}
                         </div>
 
-                        {definition.number ===
-                        1 ? (
+                        {status === 'locked' ? (
+                          <div className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-400">
+                            <LockKeyhole size={16} />
+                            Locked
+                          </div>
+                        ) : (
                           <button
-                            onClick={() =>
+                            onClick={() => {
+                              if (
+                                learningExpired &&
+                                definition.number <= 5
+                              ) {
+                                return;
+                              }
+
                               onOpenMission(
                                 definition.number,
-                              )
-                            }
+                              );
+                            }}
                             className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700"
                           >
-                            {status ===
-                            'complete'
+                            {status === 'complete'
                               ? 'Review Mission'
-                              : status ===
-                                  'in_progress'
+                              : status === 'in_progress'
                                 ? 'Continue Mission'
                                 : 'Begin Mission'}
 
-                            <ArrowRight
-                              size={17}
-                            />
+                            <ArrowRight size={17} />
                           </button>
-                        ) : status ===
-                            'available' ||
-                          status ===
-                            'in_progress' ? (
-                          <div className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-blue-50 px-4 text-sm font-semibold text-blue-700">
-                            <Play
-                              size={16}
-                            />
-                            Next
-                          </div>
-                        ) : (
-                          <div className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-slate-100 px-4 text-sm font-semibold text-slate-400">
-                            <LockKeyhole
-                              size={16}
-                            />
-                            Locked
-                          </div>
                         )}
                       </div>
                     </Card>

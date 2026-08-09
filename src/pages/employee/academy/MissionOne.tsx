@@ -10,6 +10,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { usePracticeAttemptTelemetry } from './usePracticeAttemptTelemetry';
 
 type Props = {
   onBack: () => void;
@@ -218,6 +219,18 @@ export default function MissionOne({ onBack, onComplete }: Props) {
   );
 
   const passed = score >= 6;
+
+  usePracticeAttemptTelemetry({
+    missionNumber: 1,
+    attemptOpen: learningComplete,
+    submitted,
+    scorePercent: Math.round(
+      (score / questions.length) * 100,
+    ),
+    questionCount: questions.length,
+    correctCount: score,
+    passed,
+  });
 
   function submitQuiz() {
     if (!quizAnswered) return;
