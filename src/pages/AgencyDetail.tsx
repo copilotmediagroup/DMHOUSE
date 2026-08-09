@@ -17,7 +17,7 @@ import {
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Card, Pill, PrimaryButton, SecondaryButton } from '../components/Primitives';
-import { useAgencyStore, type AgencyActivity, type AgencyStatus } from '../store/AgencyStore';
+import { useAgencyStore, type AgencyActivity } from '../store/AgencyStore';
 import { usePortfolioStore } from '../store/PortfolioStore';
 import { supabase } from '../lib/supabase';
 import { usePipelineStore } from '../store/PipelineStore';
@@ -1457,9 +1457,46 @@ export default function AgencyDetail(){
 
         <Card className="p-6">
           <p className="text-xs font-semibold uppercase tracking-[.16em] text-blue-600">Next best action</p>
-          <h3 className="mt-2 text-xl font-semibold">{!namedDecisionMaker?'Find a decision-maker':agency.activities.length===0?'Start outreach':!hasFollowUp?'Schedule a follow-up':'Continue the relationship'}</h3>
-          <p className="mt-2 text-sm leading-6 text-slate-500">{!namedDecisionMaker?'The general contact is saved. Add the owner, president, recovery manager, or portfolio buyer next.':agency.activities.length===0?'Use the phone or email above, then log the result so the relationship stays visible.':!hasFollowUp?'Add a dated follow-up so this agency does not fall out of the pipeline.':'Your next follow-up is already in the system.'}</p>
-          <PrimaryButton className="mt-5 w-full" onClick={()=>setPanel(!namedDecisionMaker?'contact':'activity')}>{!namedDecisionMaker?'Add decision-maker':'Log next action'}</PrimaryButton>
+          <h3 className="mt-2 text-xl font-semibold">{agency.status==='qualified'
+  ?'Start NDA process'
+  :!namedDecisionMaker
+    ?'Find a decision-maker'
+    :agency.activities.length===0
+      ?'Start outreach'
+      :!hasFollowUp
+        ?'Schedule a follow-up'
+        :'Continue the relationship'}</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-500">{agency.status==='qualified'
+  ?'Buyer interest is confirmed. Start the secure NDA transaction from this agency record.'
+  :!namedDecisionMaker
+    ?'The general contact is saved. Add the owner, president, recovery manager, or portfolio buyer next.'
+    :agency.activities.length===0
+      ?'Use the phone or email above, then log the result so the relationship stays visible.'
+      :!hasFollowUp
+        ?'Add a dated follow-up so this agency does not fall out of the pipeline.'
+        :'Your next follow-up is already in the system.'}</p>
+          <PrimaryButton
+              className="mt-5 w-full"
+              onClick={()=>{
+                if(agency.status==='qualified'){
+                  setNdaLaunchOpen(true);
+                  return;
+                }
+
+                setPanel(
+                  !namedDecisionMaker
+                    ?'contact'
+                    :'activity'
+                );
+              }}
+            >
+              {agency.status==='qualified'
+                ?'Start NDA Process'
+                :!namedDecisionMaker
+                  ?'Add decision-maker'
+                  :'Log next action'
+              }
+            </PrimaryButton>
         </Card>
       </aside>
     </div>
@@ -1482,22 +1519,18 @@ function ActivityForm({agency,initialType,done,add}:{agency:ReturnType<typeof us
     :type==='email'
       ?['Email drafted','Email sent','Email replied','Hard bounce','Soft bounce','Follow-up required','Requested information','Portfolio sent','Qualified','Negotiating','Offer submitted','Not interested','Do not contact']
       :['Follow-up required','Requested information','Portfolio sent','Qualified','Negotiating','Offer submitted','Closed','Not interested','Do not contact'];
-  const stages:{value:AgencyStatus;label:string}[]=[
-    {value:'new',label:'New'},{value:'researching',label:'Researching'},{value:'contacted',label:'Contacted'},{value:'qualified',label:'Qualified'},{value:'portfolio_sent',label:'Portfolio sent'},{value:'negotiating',label:'Negotiating'},{value:'offer_submitted',label:'Offer submitted'},{value:'closed',label:'Closed'},{value:'not_interested',label:'Not interested'},{value:'do_not_contact',label:'Do not contact'},
-  ];
   function changeType(next:'call'|'email'|'note'){setType(next);const first=next==='call'?'No answer':next==='email'?'Email sent':'Follow-up required';setDisposition(first);}
   async function submit(e:FormEvent<HTMLFormElement>){
     e.preventDefault();setError('');const f=new FormData(e.currentTarget);const followUp=String(f.get('followUp')||'');
     if(!closing&&!followUp){setError('Schedule the next action or choose a closing outcome.');return;}
-    try{await add(agency.id,{type,disposition,notes:String(f.get('notes')),subject:String(f.get('subject')||''),contactId:String(f.get('contact')||'')||undefined,followUpAt:followUp?new Date(followUp).toISOString():undefined,stage:String(f.get('stage')) as AgencyStatus});done();}catch(reason){setError(reason instanceof Error?reason.message:'Unable to save activity.');}
+    try{await add(agency.id,{type,disposition,notes:String(f.get('notes')),subject:String(f.get('subject')||''),contactId:String(f.get('contact')||'')||undefined,followUpAt:followUp?new Date(followUp).toISOString():undefined});done();}catch(reason){setError(reason instanceof Error?reason.message:'Unable to save activity.');}
   }
   return <Card className="border-blue-200 p-6 md:p-8">
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.16em] text-blue-600">Action center</p><h3 className="mt-1 text-2xl font-semibold">Record the outcome</h3><p className="mt-1 text-sm text-slate-500">Contact the agency, capture what happened, and lock in the next move.</p></div>{type==='call'&&agency.phone&&<a href={phoneUrl(agency.phone)} className="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white"><Phone className="mr-2" size={17}/>Call {agency.phone}</a>}{type==='email'&&agency.generalEmail&&<a href={emailUrl(agency.id)} className="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white"><Mail className="mr-2" size={17}/>Open email</a>}</div>
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[.16em] text-blue-600">Action center</p><h3 className="mt-1 text-2xl font-semibold">Record the outcome</h3><p className="mt-1 text-sm text-slate-500">Contact the agency, capture what happened, and lock in the next move. DMHOUSE advances the relationship stage automatically from the outcome.</p></div>{type==='call'&&agency.phone&&<a href={phoneUrl(agency.phone)} className="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white"><Phone className="mr-2" size={17}/>Call {agency.phone}</a>}{type==='email'&&agency.generalEmail&&<a href={emailUrl(agency.id)} className="inline-flex items-center justify-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white"><Mail className="mr-2" size={17}/>Open email</a>}</div>
     <form onSubmit={submit} className="mt-6 grid gap-4 md:grid-cols-2">
       <label className="text-sm font-medium text-slate-600">Activity type<select className={`${input} mt-2`} value={type} onChange={e=>changeType(e.target.value as 'call'|'email'|'note')}><option value="call">Call</option><option value="email">Email</option><option value="note">Note / follow-up</option></select></label>
       <label className="text-sm font-medium text-slate-600">Outcome<select className={`${input} mt-2`} value={disposition} onChange={e=>setDisposition(e.target.value)}>{options.map(x=><option key={x}>{x}</option>)}</select></label>
       <label className="text-sm font-medium text-slate-600">Contact<select className={`${input} mt-2`} name="contact"><option value="">General agency contact</option>{agency.contacts.map(c=><option key={c.id} value={c.id}>{[c.firstName,c.lastName].filter(Boolean).join(' ')}{c.title?` — ${c.title}`:''}</option>)}</select></label>
-      <label className="text-sm font-medium text-slate-600">Relationship stage<select className={`${input} mt-2`} name="stage" defaultValue={agency.status}>{stages.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label>
       <label className="text-sm font-medium text-slate-600 md:col-span-2">Subject<input className={`${input} mt-2`} name="subject" placeholder={type==='email'?'Email subject':'Purpose of this contact'}/></label>
       <label className="text-sm font-medium text-slate-600 md:col-span-2">Outcome notes<textarea className={`${input} mt-2 min-h-28`} name="notes" required placeholder="What happened, what did they say, and what matters for the next contact?"/></label>
       <label className="text-sm font-medium text-slate-600 md:col-span-2">Next action date{!closing&&<span className="ml-2 text-xs font-semibold text-red-500">Required unless relationship is closed</span>}<input className={`${input} mt-2`} name="followUp" type="datetime-local" disabled={closing}/></label>

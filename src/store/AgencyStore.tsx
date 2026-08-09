@@ -15,7 +15,72 @@ export type ContactEligibility={allowed:boolean;reason:string;lastContactedAt?:s
 type Store={agencies:Agency[];currentEmployee:{id:string;name:string};loading:boolean;error:string;refresh:()=>Promise<void>;duplicateCheck:(input:{name:string;website:string;phone:string;generalEmail:string})=>DuplicateMatch[];createAgency:(input:AgencyInput)=>Promise<Agency>;addContact:(agencyId:string,input:Omit<AgencyContact,'id'|'emailStatus'|'phoneStatus'|'emailBounceCount'|'emailLastBouncedAt'|'archivedAt'>)=>Promise<void>;checkEligibility:(agencyId:string,channel:'phone'|'email',value:string)=>Promise<ContactEligibility>;updateChannel:(agencyId:string,contactId:string|undefined,channel:'phone'|'email',value:string,status:ChannelStatus,reason?:string)=>Promise<void>;addActivity:(agencyId:string,input:Omit<AgencyActivity,'id'|'occurredAt'> & {stage?:AgencyStatus})=>Promise<void>;completeFollowUp:(agencyId:string,activityId:string)=>Promise<void>;snoozeFollowUp:(agencyId:string,activityId:string,nextDate:string)=>Promise<void>;reassign:(agencyId:string,name:string)=>Promise<void>;release:(agencyId:string)=>Promise<void>;clearInventory:()=>Promise<number>;get:(id:string)=>Agency|undefined;};
 const Context=createContext<Store|null>(null);
 const normalize=(v:string)=>v.toLowerCase().replace(/^https?:\/\/(www\.)?/,'').replace(/\/$/,'').replace(/[^a-z0-9]/g,'');
-function statusFromDisposition(disposition:string,current:AgencyStatus):AgencyStatus{if(disposition==='Do not contact')return'do_not_contact';if(disposition==='Not interested')return'not_interested';if(disposition==='Closed')return'closed';if(disposition==='Offer submitted')return'offer_submitted';if(disposition==='Negotiating')return'negotiating';if(disposition==='Portfolio sent')return'portfolio_sent';if(disposition==='Qualified'||disposition==='Reached decision-maker'||disposition==='Requested information')return'qualified';if(['No answer','Left voicemail','Reached receptionist','Call back later','Wrong number','Email drafted','Email sent','Email replied','Email bounced','Follow-up required'].includes(disposition))return'contacted';return current==='new'?'researching':current}
+function statusFromDisposition(
+  disposition:string,
+  current:AgencyStatus
+):AgencyStatus{
+
+  if(disposition==='Do not contact'){
+    return 'do_not_contact';
+  }
+
+  if(disposition==='Not interested'){
+    return 'not_interested';
+  }
+
+  if(disposition==='Closed'){
+    return 'closed';
+  }
+
+  if(disposition==='Offer submitted'){
+    return 'offer_submitted';
+  }
+
+  if(disposition==='Negotiating'){
+    return 'negotiating';
+  }
+
+  if(disposition==='Portfolio sent'){
+    return 'portfolio_sent';
+  }
+
+  /*
+    Qualification requires actual buyer interest.
+    Simply reaching the decision-maker is contact,
+    not qualification.
+  */
+
+  if(
+    disposition==='Qualified' ||
+    disposition==='Requested information'
+  ){
+    return 'qualified';
+  }
+
+  if(
+    [
+      'No answer',
+      'Left voicemail',
+      'Reached receptionist',
+      'Reached decision-maker',
+      'Call back later',
+      'Wrong number',
+      'Email drafted',
+      'Email sent',
+      'Email replied',
+      'Email bounced',
+      'Hard bounce',
+      'Soft bounce',
+      'Follow-up required'
+    ].includes(disposition)
+  ){
+    return 'contacted';
+  }
+
+  return current==='new'
+    ?'researching'
+    :current;
+}
 function mapAgency(row:any,contacts:any[],activities:any[],names:Map<string,string>):Agency{return {id:row.id,name:row.name,website:row.website||'',phone:row.phone||'',generalEmail:row.general_email||'',zip:row.zip||'',sourceLabel:row.source_label||'',internalNotes:row.internal_notes||'',isTest:Boolean(row.is_test),phoneStatus:(row.phone_status||'active') as ChannelStatus,generalEmailStatus:(row.general_email_status||'active') as ChannelStatus,emailBounceCount:Number(row.email_bounce_count||0),emailLastBouncedAt:row.email_last_bounced_at||undefined,address:row.address||'',city:row.city||'',state:row.state||'',sourceUrl:row.source_url||'',category:row.category||'',rating:row.rating==null?null:Number(row.rating),reviewCount:row.review_count==null?null:Number(row.review_count),latitude:row.latitude==null?null:Number(row.latitude),longitude:row.longitude==null?null:Number(row.longitude),ownerEmployeeId:row.assigned_to||'',ownerEmployeeName:row.assigned_to?names.get(row.assigned_to)||'Assigned employee':'Unassigned',ownershipStartedAt:row.ownership_started_at||row.created_at,ownershipExpiresAt:row.ownership_expires_at||row.created_at,status:(row.status||'new') as AgencyStatus,pipelineStage:row.pipeline_stage||'new',createdAt:row.created_at,contacts:contacts.filter(c=>c.agency_id===row.id).map(c=>({id:c.id,firstName:c.first_name,lastName:c.last_name||'',title:c.title||'',email:c.email||'',phone:c.phone||'',decisionMaker:Boolean(c.is_decision_maker),emailStatus:(c.email_status||'active') as ChannelStatus,phoneStatus:(c.phone_status||'active') as ChannelStatus,emailBounceCount:Number(c.email_bounce_count||0),emailLastBouncedAt:c.email_last_bounced_at||undefined,archivedAt:c.archived_at||undefined})).filter(c=>!c.archivedAt),activities:activities.filter(a=>a.agency_id===row.id).map(a=>({id:a.id,type:(a.activity_type==='voicemail'?'call':a.activity_type) as ActivityType,disposition:a.disposition||'',notes:a.notes||'',occurredAt:a.occurred_at,contactId:a.contact_id||undefined,followUpAt:a.follow_up_at||undefined,completedAt:a.completed_at||undefined,employeeId:a.employee_id||undefined,employeeName:a.employee_id?names.get(a.employee_id)||'Employee':undefined,subject:a.subject||undefined}))};}
 export function AgencyProvider({children}:{children:ReactNode}){
  const {profile}=usePortfolioStore();const [agencies,setAgencies]=useState<Agency[]>([]);const [loading,setLoading]=useState(true);const [error,setError]=useState('');
