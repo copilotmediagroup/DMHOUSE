@@ -61,6 +61,39 @@ type TerritoryIntelligence={
 };
 
 
+type TerritoryPerformance={
+  territory_id:string;
+  market_key:string;
+  territory_name:string;
+  employee_id:string;
+  employee_name:string|null;
+  starts_at:string;
+  expires_at:string|null;
+  prospect_searches:number;
+  agencies_discovered:number;
+  calls_made:number;
+  emails_sent:number;
+  outreach_total:number;
+  deals_closed:number;
+  gross_revenue:number;
+};
+
+
+type MarketPerformance={
+  market_key:string;
+  territory_name:string;
+  assignments:number;
+  employees:number;
+  prospect_searches:number;
+  agencies_discovered:number;
+  calls_made:number;
+  emails_sent:number;
+  outreach_total:number;
+  deals_closed:number;
+  gross_revenue:number;
+};
+
+
 type RegistryRow={
   territory_id:string;
   employee_id:string;
@@ -90,6 +123,20 @@ function niceDate(value:string|null|undefined){
       year:'numeric'
     }
   ).format(new Date(value));
+}
+
+
+function money(value:number|null|undefined){
+  return new Intl.NumberFormat(
+    'en-US',
+    {
+      style:'currency',
+      currency:'USD',
+      maximumFractionDigits:0
+    }
+  ).format(
+    Number(value||0)
+  );
 }
 
 
@@ -214,6 +261,12 @@ export default function TerritoryCommandCenter(){
   const [registry,setRegistry]=
     useState<RegistryRow[]>([]);
 
+  const [territoryPerformance,setTerritoryPerformance]=
+    useState<TerritoryPerformance[]>([]);
+
+  const [marketPerformance,setMarketPerformance]=
+    useState<MarketPerformance[]>([]);
+
   const [employees,setEmployees]=
     useState<Employee[]>([]);
 
@@ -241,7 +294,9 @@ export default function TerritoryCommandCenter(){
       const [
         intelligenceResult,
         registryResult,
-        employeeResult
+        employeeResult,
+        territoryPerformanceResult,
+        marketPerformanceResult
       ]=
         await Promise.all([
 
@@ -283,7 +338,15 @@ export default function TerritoryCommandCenter(){
             )
             .order(
               'full_name'
-            )
+            ),
+
+          supabase.rpc(
+            'dmh_owner_territory_performance'
+          ),
+
+          supabase.rpc(
+            'dmh_owner_market_performance'
+          )
         ]);
 
 
@@ -297,6 +360,14 @@ export default function TerritoryCommandCenter(){
 
       if(employeeResult.error){
         throw employeeResult.error;
+      }
+
+      if(territoryPerformanceResult.error){
+        throw territoryPerformanceResult.error;
+      }
+
+      if(marketPerformanceResult.error){
+        throw marketPerformanceResult.error;
       }
 
 
@@ -316,6 +387,38 @@ export default function TerritoryCommandCenter(){
         (
           employeeResult.data||[]
         ) as Employee[]
+      );
+
+      setTerritoryPerformance(
+        (
+          territoryPerformanceResult.data||[]
+        ).map((row:any)=>({
+          ...row,
+          prospect_searches:Number(row.prospect_searches||0),
+          agencies_discovered:Number(row.agencies_discovered||0),
+          calls_made:Number(row.calls_made||0),
+          emails_sent:Number(row.emails_sent||0),
+          outreach_total:Number(row.outreach_total||0),
+          deals_closed:Number(row.deals_closed||0),
+          gross_revenue:Number(row.gross_revenue||0)
+        })) as TerritoryPerformance[]
+      );
+
+      setMarketPerformance(
+        (
+          marketPerformanceResult.data||[]
+        ).map((row:any)=>({
+          ...row,
+          assignments:Number(row.assignments||0),
+          employees:Number(row.employees||0),
+          prospect_searches:Number(row.prospect_searches||0),
+          agencies_discovered:Number(row.agencies_discovered||0),
+          calls_made:Number(row.calls_made||0),
+          emails_sent:Number(row.emails_sent||0),
+          outreach_total:Number(row.outreach_total||0),
+          deals_closed:Number(row.deals_closed||0),
+          gross_revenue:Number(row.gross_revenue||0)
+        })) as MarketPerformance[]
       );
 
       setLastRefresh(
@@ -424,6 +527,128 @@ export default function TerritoryCommandCenter(){
       ).size,
       [active]
     );
+
+
+  const performanceTotals=
+    useMemo(()=>{
+
+      return marketPerformance.reduce(
+        (acc,row)=>({
+          searches:
+            acc.searches+
+            row.prospect_searches,
+
+          agencies:
+            acc.agencies+
+            row.agencies_discovered,
+
+          calls:
+            acc.calls+
+            row.calls_made,
+
+          emails:
+            acc.emails+
+            row.emails_sent,
+
+          outreach:
+            acc.outreach+
+            row.outreach_total,
+
+          deals:
+            acc.deals+
+            row.deals_closed,
+
+          revenue:
+            acc.revenue+
+            row.gross_revenue
+        }),
+        {
+          searches:0,
+          agencies:0,
+          calls:0,
+          emails:0,
+          outreach:0,
+          deals:0,
+          revenue:0
+        }
+      );
+
+    },[marketPerformance]);
+
+
+  const topMarkets=
+    useMemo(
+      ()=>[...marketPerformance]
+        .sort(
+          (a,b)=>
+            b.gross_revenue-a.gross_revenue
+            ||
+            b.agencies_discovered-a.agencies_discovered
+        )
+        .slice(0,8),
+      [marketPerformance]
+    );
+
+
+  const employeePerformance=
+    useMemo(()=>{
+
+      const rows=
+        new Map<string,{
+          employeeId:string;
+          employeeName:string;
+          assignments:number;
+          searches:number;
+          agencies:number;
+          calls:number;
+          emails:number;
+          outreach:number;
+          deals:number;
+          revenue:number;
+        }>();
+
+      for(const item of territoryPerformance){
+
+        const current=
+          rows.get(item.employee_id)
+          ||
+          {
+            employeeId:item.employee_id,
+            employeeName:item.employee_name||'Employee',
+            assignments:0,
+            searches:0,
+            agencies:0,
+            calls:0,
+            emails:0,
+            outreach:0,
+            deals:0,
+            revenue:0
+          };
+
+        current.assignments+=1;
+        current.searches+=item.prospect_searches;
+        current.agencies+=item.agencies_discovered;
+        current.calls+=item.calls_made;
+        current.emails+=item.emails_sent;
+        current.outreach+=item.outreach_total;
+        current.deals+=item.deals_closed;
+        current.revenue+=item.gross_revenue;
+
+        rows.set(
+          item.employee_id,
+          current
+        );
+      }
+
+      return [...rows.values()]
+        .sort(
+          (a,b)=>
+            b.revenue-a.revenue
+            ||
+            b.agencies-a.agencies
+        );
+
+    },[territoryPerformance]);
 
 
   const historyByEmployee=
@@ -900,6 +1125,339 @@ export default function TerritoryCommandCenter(){
               );
 
             })}
+
+        </div>
+
+      </section>
+
+
+      {/* =====================================================
+          TERRITORY PERFORMANCE INTELLIGENCE
+      ====================================================== */}
+
+      <section>
+
+        <div className="mb-4">
+
+          <h2 className="text-xl font-bold text-slate-950">
+            Territory Performance Intelligence
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Real prospecting, outreach, deal and revenue activity attributed back to the market that generated it.
+          </p>
+
+        </div>
+
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+
+          <StatCard
+            label="Prospect searches"
+            value={performanceTotals.searches}
+            detail="Google Maps searches attributed to territories"
+            tone="blue"
+          />
+
+          <StatCard
+            label="Agencies discovered"
+            value={performanceTotals.agencies}
+            detail="New agencies generated from assigned markets"
+            tone="emerald"
+          />
+
+          <StatCard
+            label="Total outreach"
+            value={performanceTotals.outreach}
+            detail={`${performanceTotals.calls} calls · ${performanceTotals.emails} emails`}
+          />
+
+          <StatCard
+            label="Territory revenue"
+            value={money(performanceTotals.revenue)}
+            detail={`${performanceTotals.deals} closed deal${performanceTotals.deals===1?'':'s'}`}
+            tone="emerald"
+          />
+
+        </div>
+
+      </section>
+
+
+      {/* =====================================================
+          MARKET PERFORMANCE
+      ====================================================== */}
+
+      <section className="rounded-[24px] border border-slate-200 bg-white shadow-sm">
+
+        <div className="border-b border-slate-100 px-6 py-5">
+
+          <h2 className="text-lg font-bold text-slate-950">
+            Lifetime Market Performance
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Performance follows the market where the agency was originally discovered.
+          </p>
+
+        </div>
+
+
+        <div className="overflow-x-auto">
+
+          <table className="w-full min-w-[1050px]">
+
+            <thead className="bg-slate-50">
+
+              <tr className="text-left text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+
+                <th className="px-6 py-4">
+                  Market
+                </th>
+
+                <th className="px-4 py-4">
+                  Assignments
+                </th>
+
+                <th className="px-4 py-4">
+                  Searches
+                </th>
+
+                <th className="px-4 py-4">
+                  Agencies
+                </th>
+
+                <th className="px-4 py-4">
+                  Calls
+                </th>
+
+                <th className="px-4 py-4">
+                  Emails
+                </th>
+
+                <th className="px-4 py-4">
+                  Deals
+                </th>
+
+                <th className="px-6 py-4 text-right">
+                  Revenue
+                </th>
+
+              </tr>
+
+            </thead>
+
+
+            <tbody className="divide-y divide-slate-100">
+
+              {topMarkets.map(row=>(
+
+                <tr
+                  key={row.market_key}
+                  className="text-sm"
+                >
+
+                  <td className="px-6 py-4">
+
+                    <p className="font-bold text-slate-900">
+                      {row.territory_name}
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-400">
+                      {row.employees} employee{row.employees===1?'':'s'} worked this market
+                    </p>
+
+                  </td>
+
+
+                  <td className="px-4 py-4 font-semibold text-slate-700">
+                    {row.assignments}
+                  </td>
+
+
+                  <td className="px-4 py-4 font-semibold text-slate-700">
+                    {row.prospect_searches}
+                  </td>
+
+
+                  <td className="px-4 py-4 font-semibold text-slate-700">
+                    {row.agencies_discovered}
+                  </td>
+
+
+                  <td className="px-4 py-4 font-semibold text-slate-700">
+                    {row.calls_made}
+                  </td>
+
+
+                  <td className="px-4 py-4 font-semibold text-slate-700">
+                    {row.emails_sent}
+                  </td>
+
+
+                  <td className="px-4 py-4">
+
+                    <span className={
+                      row.deals_closed>0
+                        ?'font-bold text-emerald-700'
+                        :'font-semibold text-slate-500'
+                    }>
+                      {row.deals_closed}
+                    </span>
+
+                  </td>
+
+
+                  <td className="px-6 py-4 text-right font-bold text-slate-950">
+                    {money(row.gross_revenue)}
+                  </td>
+
+                </tr>
+
+              ))}
+
+
+              {!topMarkets.length&&!loading&&(
+
+                <tr>
+
+                  <td
+                    colSpan={8}
+                    className="px-6 py-12 text-center text-sm text-slate-500"
+                  >
+                    Territory performance will appear as employees search and develop assigned markets.
+                  </td>
+
+                </tr>
+
+              )}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </section>
+
+
+      {/* =====================================================
+          EMPLOYEE PERFORMANCE BY TERRITORY ACTIVITY
+      ====================================================== */}
+
+      <section className="rounded-[24px] border border-slate-200 bg-white shadow-sm">
+
+        <div className="border-b border-slate-100 px-6 py-5">
+
+          <h2 className="text-lg font-bold text-slate-950">
+            Employee Market Performance
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Compare employees based on activity and revenue generated from their territory assignments.
+          </p>
+
+        </div>
+
+
+        <div className="divide-y divide-slate-100">
+
+          {employeePerformance.map(row=>(
+
+            <div
+              key={row.employeeId}
+              className="grid gap-5 px-6 py-5 lg:grid-cols-[1.3fr_.55fr_.55fr_.55fr_.55fr_.65fr]"
+            >
+
+              <div>
+
+                <p className="font-bold text-slate-900">
+                  {row.employeeName}
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  {row.assignments} territory assignment{row.assignments===1?'':'s'}
+                </p>
+
+              </div>
+
+
+              <div>
+
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  Searches
+                </p>
+
+                <p className="mt-1 text-lg font-bold text-slate-900">
+                  {row.searches}
+                </p>
+
+              </div>
+
+
+              <div>
+
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  Agencies
+                </p>
+
+                <p className="mt-1 text-lg font-bold text-slate-900">
+                  {row.agencies}
+                </p>
+
+              </div>
+
+
+              <div>
+
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  Outreach
+                </p>
+
+                <p className="mt-1 text-lg font-bold text-slate-900">
+                  {row.outreach}
+                </p>
+
+              </div>
+
+
+              <div>
+
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  Deals
+                </p>
+
+                <p className="mt-1 text-lg font-bold text-slate-900">
+                  {row.deals}
+                </p>
+
+              </div>
+
+
+              <div>
+
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                  Revenue
+                </p>
+
+                <p className="mt-1 text-lg font-bold text-emerald-700">
+                  {money(row.revenue)}
+                </p>
+
+              </div>
+
+            </div>
+
+          ))}
+
+
+          {!employeePerformance.length&&!loading&&(
+
+            <div className="px-6 py-10 text-center text-sm text-slate-500">
+              Employee territory performance will populate as attributed activity is created.
+            </div>
+
+          )}
 
         </div>
 
