@@ -14,11 +14,38 @@ import {
   Star,
   UserRound,
 } from 'lucide-react';
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Card, Pill, PrimaryButton, SecondaryButton } from '../components/Primitives';
 import { useAgencyStore, type AgencyActivity, type AgencyStatus } from '../store/AgencyStore';
 import { usePortfolioStore } from '../store/PortfolioStore';
+import { supabase } from '../lib/supabase';
+import { usePipelineStore } from '../store/PipelineStore';
+import { useNegotiationStore } from '../store/NegotiationStore';
+import { useClosingStore } from '../store/ClosingStore';
+
+type AgencySecureTransaction={
+  roomId:string;
+  buyerId:string;
+  buyerUserId:string|null;
+  buyerName:string;
+  buyerCompany:string;
+  portfolioId:string;
+  portfolioName:string;
+  roomStatus:string;
+
+  ndaStatus:string|null;
+  ndaSentAt:string|null;
+  ndaSignedAt:string|null;
+
+  purchaseStatus:string|null;
+  purchaseSentAt:string|null;
+  purchaseSignedAt:string|null;
+
+  paymentConfirmedAt:string|null;
+  finalFileReleasedAt:string|null;
+  closedAt:string|null;
+};
 
 const input='w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100';
 
@@ -31,6 +58,233 @@ function emailUrl(agencyId:string,contactId?:string){
   return `${base}?compose=1&agency=${encodeURIComponent(agencyId)}${contactId?`&contact=${encodeURIComponent(contactId)}`:''}`;
 }
 function phoneUrl(value:string){return value?`tel:${value.replace(/[^+\d]/g,'')}`:'';}
+
+function agencySalesStage(input:{
+  agencyStatus:string;
+  opportunityStage?:string;
+  offerStatus?:string;
+  reservationStatus?:string;
+  hasSale:boolean;
+
+  secureRoom?:boolean;
+  ndaStatus?:string|null;
+  purchaseStatus?:string|null;
+  paymentConfirmed?:boolean;
+  finalReleased?:boolean;
+}){
+  /*
+    Secure deal-room state outranks the legacy sales pipeline.
+    Once a buyer transaction exists, the document/payment
+    workflow becomes the canonical stage.
+  */
+
+  if(input.finalReleased){
+    return {
+      key:'final_released',
+      label:'Final Portfolio Released',
+      detail:'Payment is confirmed and the final portfolio has been released to the buyer.',
+      progress:100
+    };
+  }
+
+  if(input.paymentConfirmed){
+    return {
+      key:'payment_confirmed',
+      label:'Payment Confirmed',
+      detail:'Cleared funds are confirmed. The final portfolio is ready for controlled release.',
+      progress:94
+    };
+  }
+
+  if(input.purchaseStatus==='fully_executed'){
+    return {
+      key:'purchase_signed',
+      label:'Purchase Agreement Signed',
+      detail:'The Purchase Agreement is fully executed. The transaction is waiting for payment confirmation.',
+      progress:86
+    };
+  }
+
+  if(
+    input.purchaseStatus==='sent_to_buyer' ||
+    input.purchaseStatus==='seller_signed'
+  ){
+    return {
+      key:'purchase_sent',
+      label:'Purchase Agreement Sent',
+      detail:'The Purchase Agreement is with the buyer for signature.',
+      progress:76
+    };
+  }
+
+  if(input.ndaStatus==='fully_executed'){
+    return {
+      key:'nda_signed',
+      label:'NDA Signed',
+      detail:'The NDA is fully executed. The next step is the Purchase Agreement.',
+      progress:64
+    };
+  }
+
+  if(
+    input.ndaStatus==='sent_to_buyer' ||
+    input.secureRoom
+  ){
+    return {
+      key:'nda_sent',
+      label:'NDA Sent',
+      detail:'The secure buyer transaction is active and waiting for the NDA to be signed.',
+      progress:54
+    };
+  }
+
+  if(input.hasSale){
+    return {
+      key:'complete',
+      label:'Deal Complete',
+      detail:'This agency has completed a portfolio purchase.',
+      progress:100
+    };
+  }
+
+  if(input.reservationStatus==='paid'){
+    return {
+      key:'payment_confirmed',
+      label:'Payment Confirmed',
+      detail:'Payment has been recorded. Complete the secured transaction release process.',
+      progress:90
+    };
+  }
+
+  if(input.reservationStatus==='active'){
+    return {
+      key:'payment',
+      label:'Payment / Closing',
+      detail:'The transaction has reached funding and closing.',
+      progress:80
+    };
+  }
+
+  if(
+    input.offerStatus==='accepted' ||
+    input.offerStatus==='reserved'
+  ){
+    return {
+      key:'transaction',
+      label:'Transaction Ready',
+      detail:'Commercial terms have advanced. Continue through the secure transaction workspace.',
+      progress:68
+    };
+  }
+
+  if(
+    input.offerStatus==='submitted' ||
+    input.offerStatus==='owner_countered' ||
+    input.offerStatus==='buyer_countered'
+  ){
+    return {
+      key:'offer',
+      label:'Offer / Negotiation',
+      detail:'An active offer is being negotiated with this agency.',
+      progress:58
+    };
+  }
+
+  if(
+    input.opportunityStage==='contracts' ||
+    input.agencyStatus==='offer_submitted'
+  ){
+    return {
+      key:'contracts',
+      label:'Contracts',
+      detail:'The relationship has reached transaction documentation.',
+      progress:52
+    };
+  }
+
+  if(
+    input.opportunityStage==='verbal_agreement' ||
+    input.opportunityStage==='negotiating' ||
+    input.agencyStatus==='negotiating'
+  ){
+    return {
+      key:'negotiating',
+      label:'Negotiating',
+      detail:'The buyer relationship has moved into commercial discussion.',
+      progress:44
+    };
+  }
+
+  if(
+    input.opportunityStage==='portfolio_sent' ||
+    input.agencyStatus==='portfolio_sent'
+  ){
+    return {
+      key:'portfolio_sent',
+      label:'Portfolio Sent',
+      detail:'The buyer has received portfolio information for review.',
+      progress:36
+    };
+  }
+
+  if(
+    input.opportunityStage==='portfolio_requested' ||
+    input.opportunityStage==='decision_maker_found' ||
+    input.agencyStatus==='qualified'
+  ){
+    return {
+      key:'qualified',
+      label:'Qualified Buyer',
+      detail:'This agency is qualified. Move the relationship toward a portfolio opportunity.',
+      progress:28
+    };
+  }
+
+  if(
+    input.opportunityStage==='conversation_started' ||
+    input.opportunityStage==='first_contact' ||
+    input.agencyStatus==='contacted'
+  ){
+    return {
+      key:'contacted',
+      label:'Contacted',
+      detail:'Outreach has started. Continue developing the buyer relationship.',
+      progress:18
+    };
+  }
+
+  if(input.agencyStatus==='researching'){
+    return {
+      key:'researching',
+      label:'Researching',
+      detail:'Research the agency and identify the correct decision-maker.',
+      progress:10
+    };
+  }
+
+  if(
+    input.agencyStatus==='not_interested' ||
+    input.agencyStatus==='do_not_contact'
+  ){
+    return {
+      key:'closed_lost',
+      label:
+        input.agencyStatus==='do_not_contact'
+          ?'Do Not Contact'
+          :'Not Interested',
+      detail:'This relationship is not currently moving forward.',
+      progress:0
+    };
+  }
+
+  return {
+    key:'prospected',
+    label:'Prospected',
+    detail:'Agency discovered. Begin research and first outreach.',
+    progress:5
+  };
+}
+
 function formatDate(value:string){if(!value)return 'Not available';const d=new Date(value);return Number.isNaN(d.getTime())?'Not available':d.toLocaleDateString();}
 function formatDateTime(value:string){const d=new Date(value);return Number.isNaN(d.getTime())?'':d.toLocaleString();}
 
@@ -38,9 +292,307 @@ export default function AgencyDetail(){
   const {id}=useParams();
   const {get,loading,addContact,addActivity,reassign,release,updateChannel}=useAgencyStore();
   const {role}=usePortfolioStore();
+  const {opportunities}=usePipelineStore();
+  const {offers}=useNegotiationStore();
+  const {reservations,sales}=useClosingStore();
   const agency=get(id||'');
+
+  const agencyOpportunity=useMemo(
+    ()=>opportunities
+      .filter(item=>item.agencyId===(id||''))
+      .sort(
+        (a,b)=>
+          new Date(b.updatedAt).getTime()
+          -
+          new Date(a.updatedAt).getTime()
+      )[0],
+    [opportunities,id]
+  );
+
+  const agencyOffer=useMemo(
+    ()=>offers
+      .filter(item=>item.agencyId===(id||''))
+      .sort(
+        (a,b)=>
+          new Date(b.updatedAt).getTime()
+          -
+          new Date(a.updatedAt).getTime()
+      )[0],
+    [offers,id]
+  );
+
+  const agencyReservation=useMemo(
+    ()=>reservations
+      .filter(item=>item.agencyId===(id||''))
+      .sort(
+        (a,b)=>
+          new Date(b.createdAt).getTime()
+          -
+          new Date(a.createdAt).getTime()
+      )[0],
+    [reservations,id]
+  );
+
+  const agencySale=useMemo(
+    ()=>sales
+      .filter(item=>item.agencyId===(id||''))
+      .sort(
+        (a,b)=>
+          new Date(b.closedAt).getTime()
+          -
+          new Date(a.closedAt).getTime()
+      )[0],
+    [sales,id]
+  );
   const [panel,setPanel]=useState<'contact'|'activity'|null>(null);
   const [activityKind,setActivityKind]=useState<'call'|'email'|'note'>('call');
+
+  const [secureTransaction,setSecureTransaction]=
+    useState<AgencySecureTransaction|null>(null);
+
+  const [secureTransactionLoading,setSecureTransactionLoading]=
+    useState(false);
+
+  const [secureTransactionError,setSecureTransactionError]=
+    useState('');
+
+  useEffect(()=>{
+
+    let cancelled=false;
+
+    async function loadAgencySecureTransaction(){
+
+      if(!id){
+        setSecureTransaction(null);
+        return;
+      }
+
+      setSecureTransactionLoading(true);
+      setSecureTransactionError('');
+
+      try{
+
+        /*
+          Agency → Buyer Profile
+        */
+
+        const buyerResult=
+          await supabase
+            .from('buyer_profiles')
+            .select(
+              'id,user_id,company_name,contact_name,agency_id'
+            )
+            .eq('agency_id',id)
+            .order('created_at',{ascending:false})
+            .limit(1)
+            .maybeSingle();
+
+        if(buyerResult.error){
+          throw buyerResult.error;
+        }
+
+        const buyer:any=buyerResult.data;
+
+        if(!buyer){
+
+          if(!cancelled){
+            setSecureTransaction(null);
+          }
+
+          return;
+        }
+
+
+        /*
+          Buyer → Most Recent Deal Room
+        */
+
+        const roomResult=
+          await supabase
+            .from('buyer_deal_rooms')
+            .select(
+              'id,buyer_id,portfolio_id,offer_id,status,payment_confirmed_at,final_file_released_at,closed_at,created_at,updated_at'
+            )
+            .eq('buyer_id',buyer.id)
+            .order('updated_at',{ascending:false})
+            .limit(1)
+            .maybeSingle();
+
+        if(roomResult.error){
+          throw roomResult.error;
+        }
+
+        const room:any=roomResult.data;
+
+        if(!room){
+
+          if(!cancelled){
+            setSecureTransaction(null);
+          }
+
+          return;
+        }
+
+
+        /*
+          Load portfolio + generated legal documents.
+        */
+
+        const [
+          portfolioResult,
+          documentResult
+        ]=
+          await Promise.all([
+
+            supabase
+              .from('portfolios')
+              .select('id,name')
+              .eq('id',room.portfolio_id)
+              .maybeSingle(),
+
+            supabase
+              .from('deal_documents_generated')
+              .select(
+                'id,document_type,status,sent_at,buyer_signed_at,created_at'
+              )
+              .eq('room_id',room.id)
+              .in(
+                'document_type',
+                ['nda','purchase_agreement']
+              )
+              .order(
+                'created_at',
+                {ascending:false}
+              )
+
+          ]);
+
+
+        if(portfolioResult.error){
+          throw portfolioResult.error;
+        }
+
+        if(documentResult.error){
+          throw documentResult.error;
+        }
+
+
+        const documents:any[]=
+          documentResult.data||[];
+
+
+        const nda=
+          documents.find(
+            document=>document.document_type==='nda'
+          );
+
+
+        const purchase=
+          documents.find(
+            document=>document.document_type==='purchase_agreement'
+          );
+
+
+        if(cancelled){
+          return;
+        }
+
+
+        setSecureTransaction({
+          roomId:String(room.id),
+          buyerId:String(buyer.id),
+          buyerUserId:
+            buyer.user_id
+              ?String(buyer.user_id)
+              :null,
+
+          buyerName:
+            String(
+              buyer.contact_name||
+              'Buyer'
+            ),
+
+          buyerCompany:
+            String(
+              buyer.company_name||
+              'Buyer'
+            ),
+
+          portfolioId:
+            String(room.portfolio_id),
+
+          portfolioName:
+            String(
+              portfolioResult.data?.name||
+              'Portfolio'
+            ),
+
+          roomStatus:
+            String(
+              room.status||
+              ''
+            ),
+
+          ndaStatus:
+            nda?.status||null,
+
+          ndaSentAt:
+            nda?.sent_at||null,
+
+          ndaSignedAt:
+            nda?.buyer_signed_at||null,
+
+          purchaseStatus:
+            purchase?.status||null,
+
+          purchaseSentAt:
+            purchase?.sent_at||null,
+
+          purchaseSignedAt:
+            purchase?.buyer_signed_at||null,
+
+          paymentConfirmedAt:
+            room.payment_confirmed_at||null,
+
+          finalFileReleasedAt:
+            room.final_file_released_at||null,
+
+          closedAt:
+            room.closed_at||null
+        });
+
+      }catch(reason){
+
+        if(!cancelled){
+
+          setSecureTransaction(null);
+
+          setSecureTransactionError(
+            reason instanceof Error
+              ?reason.message
+              :'Unable to load secure transaction.'
+          );
+
+        }
+
+      }finally{
+
+        if(!cancelled){
+          setSecureTransactionLoading(false);
+        }
+
+      }
+
+    }
+
+    void loadAgencySecureTransaction();
+
+    return ()=>{
+      cancelled=true;
+    };
+
+  },[id]);
+
 
   const timeline=useMemo(()=>{
     if(!agency)return [];
@@ -70,6 +622,46 @@ export default function AgencyDetail(){
       </div>
     );
   }
+
+  const salesExecution=agencySalesStage({
+    agencyStatus:agency.status,
+    opportunityStage:agencyOpportunity?.stage,
+    offerStatus:agencyOffer?.status,
+    reservationStatus:agencyReservation?.status,
+    hasSale:Boolean(agencySale),
+
+    secureRoom:Boolean(secureTransaction),
+
+    ndaStatus:
+      secureTransaction?.ndaStatus,
+
+    purchaseStatus:
+      secureTransaction?.purchaseStatus,
+
+    paymentConfirmed:
+      Boolean(
+        secureTransaction?.paymentConfirmedAt
+      ),
+
+    finalReleased:
+      Boolean(
+        secureTransaction?.finalFileReleasedAt
+      )
+  });
+
+  const transactionBasePath=
+    role==='owner'
+      ?'/transactions'
+      :'/employee/transactions';
+
+  const transactionPath=
+    secureTransaction?.roomId
+      ?transactionBasePath+
+        '?room='+
+        encodeURIComponent(
+          secureTransaction.roomId
+        )
+      :transactionBasePath;
 
   const websiteHref=externalUrl(agency.website);
   const fullLocation=agency.address||[agency.city,agency.state].filter(Boolean).join(', ');
@@ -117,6 +709,391 @@ export default function AgencyDetail(){
 
     {panel==='contact'&&<div className="mb-6"><ContactForm agencyId={agency.id} done={()=>setPanel(null)} add={addContact}/></div>}
     {panel==='activity'&&<div className="mb-6"><ActivityForm agency={agency} initialType={activityKind} done={()=>setPanel(null)} add={addActivity}/></div>}
+
+    {/* =====================================================
+        SALES EXECUTION WORKSPACE
+    ====================================================== */}
+
+    <Card className="mb-6 overflow-hidden border-blue-200">
+
+      <div className="bg-[#091221] p-6 text-white md:p-7">
+
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+
+          <div className="max-w-3xl">
+
+            <p className="text-xs font-bold uppercase tracking-[.18em] text-blue-300">
+              SALES EXECUTION WORKSPACE
+            </p>
+
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+
+              <h2 className="text-2xl font-semibold">
+                {salesExecution.label}
+              </h2>
+
+              <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-slate-200">
+                {salesExecution.progress}% complete
+              </span>
+
+            </div>
+
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              {salesExecution.detail}
+            </p>
+
+          </div>
+
+
+          <div className="shrink-0">
+
+            {salesExecution.key==='complete'?(
+              <Link
+                to={transactionPath}
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-emerald-500 px-5 text-sm font-bold text-white transition hover:bg-emerald-600"
+              >
+                View Completed Transaction
+              </Link>
+            ):salesExecution.key==='prospected'||
+              salesExecution.key==='researching'||
+              salesExecution.key==='contacted'?(
+              <button
+                type="button"
+                onClick={()=>{
+                  setActivityKind('call');
+                  setPanel('activity');
+                }}
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700"
+              >
+                Continue Outreach
+              </button>
+            ):(
+              <Link
+                to={transactionPath}
+                className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700"
+              >
+                Continue Transaction
+              </Link>
+            )}
+
+          </div>
+
+        </div>
+
+
+        <div className="mt-6 h-2 overflow-hidden rounded-full bg-white/10">
+
+          <div
+            className="h-full rounded-full bg-blue-500 transition-all"
+            style={{
+              width:String(Math.max(4,salesExecution.progress))+'%'
+            }}
+          />
+
+        </div>
+
+      </div>
+
+
+      <div className="grid gap-px bg-slate-100 sm:grid-cols-2 lg:grid-cols-4">
+
+        <div className="bg-white p-5">
+
+          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+            Buyer relationship
+          </p>
+
+          <p className="mt-2 font-semibold capitalize text-slate-900">
+            {agency.status.replace(/_/g,' ')}
+          </p>
+
+        </div>
+
+
+        <div className="bg-white p-5">
+
+          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+            Pipeline
+          </p>
+
+          <p className="mt-2 font-semibold capitalize text-slate-900">
+            {agencyOpportunity
+              ?agencyOpportunity.stage.replace(/_/g,' ')
+              :'No opportunity yet'
+            }
+          </p>
+
+        </div>
+
+
+        <div className="bg-white p-5">
+
+          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+            Offer
+          </p>
+
+          <p className="mt-2 font-semibold capitalize text-slate-900">
+            {agencyOffer
+              ?agencyOffer.status.replace(/_/g,' ')
+              :'No offer yet'
+            }
+          </p>
+
+          {agencyOffer&&(
+            <p className="mt-1 text-xs text-slate-500">
+              {new Intl.NumberFormat(
+                'en-US',
+                {
+                  style:'currency',
+                  currency:'USD',
+                  maximumFractionDigits:0
+                }
+              ).format(agencyOffer.currentAmount)}
+            </p>
+          )}
+
+        </div>
+
+
+        <div className="bg-white p-5">
+
+          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
+            Closing
+          </p>
+
+          <p className="mt-2 font-semibold capitalize text-slate-900">
+            {agencySale
+              ?'Closed'
+              :agencyReservation
+                ?agencyReservation.status.replace(/_/g,' ')
+                :'Not started'
+            }
+          </p>
+
+          {agencySale&&(
+            <p className="mt-1 text-xs font-semibold text-emerald-700">
+              {new Intl.NumberFormat(
+                'en-US',
+                {
+                  style:'currency',
+                  currency:'USD',
+                  maximumFractionDigits:0
+                }
+              ).format(agencySale.salePrice)}
+            </p>
+          )}
+
+        </div>
+
+      </div>
+
+
+      <div className="border-t border-slate-100 bg-white px-6 py-5">
+
+        {secureTransactionLoading&&(
+          <div className="mb-5 rounded-2xl bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700">
+            Loading secure transaction…
+          </div>
+        )}
+
+        {secureTransactionError&&(
+          <div className="mb-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            Secure transaction unavailable: {secureTransactionError}
+          </div>
+        )}
+
+        {secureTransaction&&(
+          <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50/50 p-5">
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
+              <div>
+
+                <p className="text-[11px] font-bold uppercase tracking-[.14em] text-blue-600">
+                  Secure transaction lifecycle
+                </p>
+
+                <p className="mt-2 font-bold text-slate-950">
+                  {secureTransaction.portfolioName}
+                </p>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Buyer: {secureTransaction.buyerCompany}
+                </p>
+
+              </div>
+
+
+              <Link
+                to={transactionPath}
+                className="inline-flex min-h-10 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-bold text-white hover:bg-blue-700"
+              >
+                Open Exact Transaction
+              </Link>
+
+            </div>
+
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+
+              {[
+                {
+                  label:'NDA Sent',
+                  done:Boolean(
+                    secureTransaction.ndaSentAt||
+                    secureTransaction.ndaStatus
+                  )
+                },
+                {
+                  label:'NDA Signed',
+                  done:
+                    secureTransaction.ndaStatus===
+                    'fully_executed'
+                },
+                {
+                  label:'Purchase Agreement',
+                  done:Boolean(
+                    secureTransaction.purchaseSentAt||
+                    secureTransaction.purchaseStatus
+                  )
+                },
+                {
+                  label:'Payment Confirmed',
+                  done:Boolean(
+                    secureTransaction.paymentConfirmedAt
+                  )
+                },
+                {
+                  label:'Final Released',
+                  done:Boolean(
+                    secureTransaction.finalFileReleasedAt
+                  )
+                }
+              ].map(item=>(
+                <div
+                  key={item.label}
+                  className={
+                    'rounded-xl border p-3 '+
+                    (
+                      item.done
+                        ?'border-emerald-200 bg-emerald-50'
+                        :'border-slate-200 bg-white'
+                    )
+                  }
+                >
+
+                  <div
+                    className={
+                      'mb-2 grid h-6 w-6 place-items-center rounded-full text-xs font-bold '+
+                      (
+                        item.done
+                          ?'bg-emerald-600 text-white'
+                          :'bg-slate-100 text-slate-400'
+                      )
+                    }
+                  >
+                    {item.done?'✓':'·'}
+                  </div>
+
+                  <p
+                    className={
+                      'text-xs font-semibold '+
+                      (
+                        item.done
+                          ?'text-emerald-800'
+                          :'text-slate-500'
+                      )
+                    }
+                  >
+                    {item.label}
+                  </p>
+
+                </div>
+              ))}
+
+            </div>
+
+          </div>
+        )}
+
+        <p className="text-xs font-bold uppercase tracking-[.14em] text-slate-400">
+          Deal path
+        </p>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-5">
+
+          {[
+            {
+              label:'Prospected',
+              done:salesExecution.progress>=5
+            },
+            {
+              label:'Contacted',
+              done:salesExecution.progress>=18
+            },
+            {
+              label:'Qualified',
+              done:salesExecution.progress>=28
+            },
+            {
+              label:'Transaction',
+              done:salesExecution.progress>=52
+            },
+            {
+              label:'Complete',
+              done:salesExecution.progress>=100
+            }
+          ].map(step=>(
+            <div
+              key={step.label}
+              className={
+                'rounded-2xl border px-4 py-3 '+
+                (
+                  step.done
+                    ?'border-emerald-200 bg-emerald-50'
+                    :'border-slate-200 bg-slate-50'
+                )
+              }
+            >
+
+              <div className="flex items-center gap-2">
+
+                <span
+                  className={
+                    'grid h-5 w-5 place-items-center rounded-full text-xs font-bold '+
+                    (
+                      step.done
+                        ?'bg-emerald-600 text-white'
+                        :'bg-slate-200 text-slate-500'
+                    )
+                  }
+                >
+                  {step.done?'✓':'·'}
+                </span>
+
+                <span
+                  className={
+                    'text-xs font-semibold '+
+                    (
+                      step.done
+                        ?'text-emerald-800'
+                        :'text-slate-500'
+                    )
+                  }
+                >
+                  {step.label}
+                </span>
+
+              </div>
+
+            </div>
+          ))}
+
+        </div>
+
+      </div>
+
+    </Card>
 
     <div className="grid gap-6 xl:grid-cols-[1.35fr_.65fr]">
       <div className="space-y-6">
