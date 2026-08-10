@@ -21,6 +21,9 @@ import {
   SecondaryButton
 } from '../../components/Primitives';
 
+import {buildAgreementHtml} from '../../components/AgreementDocument';
+import {useAgreementStore,type AgreementFields} from '../../store/AgreementStore';
+
 import {supabase} from '../../lib/supabase';
 import {usePortfolioStore} from '../../store/PortfolioStore';
 
@@ -110,8 +113,16 @@ export default function DeveloperTransactionMode(){
 
   const {
     profile,
-    role
+    role,
+    portfolios
   }=usePortfolioStore();
+
+  const {
+    upsertBuyer,
+    save,
+    sign,
+    send
+  }=useAgreementStore();
 
   const [rows,setRows]=
     useState<TransactionRow[]>([]);
@@ -132,6 +143,24 @@ export default function DeveloperTransactionMode(){
     useState('');
 
   const [armed,setArmed]=
+    useState(false);
+
+  const [testPortfolioId,setTestPortfolioId]=
+    useState('');
+
+  const [testCompany,setTestCompany]=
+    useState('DMHOUSE TEST BUYER');
+
+  const [testBuyerName,setTestBuyerName]=
+    useState('Developer Test Buyer');
+
+  const [testBuyerEmail,setTestBuyerEmail]=
+    useState('');
+
+  const [testSellerName,setTestSellerName]=
+    useState(profile?.full_name||'');
+
+  const [startingTest,setStartingTest]=
     useState(false);
 
   const load=useCallback(async()=>{
@@ -204,6 +233,46 @@ export default function DeveloperTransactionMode(){
     void load();
   },[load]);
 
+  useEffect(()=>{
+
+    if(
+      profile?.full_name&&
+      !testSellerName
+    ){
+      setTestSellerName(
+        profile.full_name
+      );
+    }
+
+  },[
+    profile?.full_name,
+    testSellerName
+  ]);
+
+  useEffect(()=>{
+
+    if(
+      !testPortfolioId
+    ){
+
+      const first=
+        portfolios.find(
+          portfolio=>
+            ['active','negotiating','reserved']
+              .includes(portfolio.status)
+        );
+
+      if(first){
+        setTestPortfolioId(first.id);
+      }
+
+    }
+
+  },[
+    portfolios,
+    testPortfolioId
+  ]);
+
   const selected=useMemo(
     ()=>
       rows.find(
@@ -258,6 +327,332 @@ export default function DeveloperTransactionMode(){
 
     return result.data;
   }
+
+  async function startTestTransaction(){
+
+    if(
+      role!=='owner'||
+      !profile
+    ){
+      return;
+    }
+
+    const portfolio=
+      portfolios.find(
+        item=>
+          item.id===testPortfolioId
+      );
+
+    if(!portfolio){
+
+      setError(
+        'Select an active portfolio for the TEST transaction.'
+      );
+
+      return;
+    }
+
+    const identity=
+      (
+        testCompany+
+        ' '+
+        testBuyerName+
+        ' '+
+        testBuyerEmail
+      ).toUpperCase();
+
+    if(
+      !identity.includes('TEST')&&
+      !identity.includes('DEV')
+    ){
+
+      setError(
+        'Developer transactions must contain TEST or DEV in the buyer company, name, or email.'
+      );
+
+      return;
+    }
+
+    if(
+      !testBuyerEmail.trim()
+    ){
+
+      setError(
+        'Enter the email address that should receive the TEST Buyer Portal invitation.'
+      );
+
+      return;
+    }
+
+    if(
+      !testSellerName.trim()
+    ){
+
+      setError(
+        'Enter the Owner legal name used to sign the TEST NDA.'
+      );
+
+      return;
+    }
+
+    setStartingTest(true);
+    setBusy('start');
+    setMessage('');
+    setError('');
+
+    try{
+
+      const fields:AgreementFields={
+        buyerCompany:
+          testCompany.trim(),
+
+        buyerName:
+          testBuyerName.trim(),
+
+        buyerTitle:
+          'TEST Buyer',
+
+        buyerAddress:
+          '',
+
+        buyerEmail:
+          testBuyerEmail.trim().toLowerCase(),
+
+        buyerPhone:
+          '',
+
+        sellerCompany:
+          'Data Market House',
+
+        sellerName:
+          testSellerName.trim(),
+
+        sellerTitle:
+          'Owner',
+
+        portfolioName:
+          portfolio.name,
+
+        creditors:
+          portfolio.originalCreditor||'',
+
+        accountCount:
+          String(
+            portfolio.accountCount||0
+          ),
+
+        principalBalance:
+          String(
+            portfolio.faceValue||0
+          ),
+
+        currentBalance:
+          String(
+            portfolio.faceValue||0
+          ),
+
+        purchasePrice:
+          String(
+            portfolio.askingPrice||0
+          ),
+
+        priceBasis:
+          '',
+
+        saleType:
+          'AS-IS',
+
+        mediaIncluded:
+          '',
+
+        stateCoverage:
+          '',
+
+        permittedUse:
+          'Evaluation of portfolio purchase',
+
+        confidentialityPeriod:
+          'Three years',
+
+        governingState:
+          'Florida',
+
+        effectiveDate:
+          new Date()
+            .toISOString()
+            .slice(0,10),
+
+        expirationDate:
+          '',
+
+        paymentTerms:
+          'Payment in full before final-file release',
+
+        deliveryMethod:
+          'Secure Deal Room',
+
+        deliveryDeadline:
+          'After confirmed payment',
+
+        specialConditions:
+          'DEVELOPER MODE TEST TRANSACTION',
+
+        customClauses:
+          ''
+      };
+
+
+      /*
+        PRODUCTION STEP 1:
+        Real buyer profile RPC.
+      */
+
+      const buyerId=
+        await upsertBuyer({
+          email:
+            fields.buyerEmail,
+
+          companyName:
+            fields.buyerCompany,
+
+          contactName:
+            fields.buyerName,
+
+          title:
+            fields.buyerTitle,
+
+          phone:
+            fields.buyerPhone
+        });
+
+
+      /*
+        PRODUCTION STEP 2:
+        Render the real NDA using the same builder
+        used by Document Studio.
+      */
+
+      const html=
+        buildAgreementHtml(
+          'nda',
+          fields,
+          true
+        );
+
+
+      /*
+        PRODUCTION STEP 3:
+        Save generated NDA through the real RPC.
+      */
+
+      const documentId=
+        await save({
+          buyerId,
+          portfolioId:
+            portfolio.id,
+
+          type:
+            'nda',
+
+          title:
+            'TEST NDA — '+
+            portfolio.name,
+
+          fields,
+          html
+        });
+
+
+      /*
+        PRODUCTION STEP 4:
+        Apply real seller signature.
+      */
+
+      await sign(
+        documentId,
+        fields.sellerName,
+        fields.sellerTitle,
+        'script'
+      );
+
+
+      /*
+        PRODUCTION STEP 5:
+        Real invitation Edge Function.
+
+        dmh_prepare_buyer_invitation() behind this
+        creates/upserts buyer_deal_rooms and links
+        this document to that exact room.
+      */
+
+      const result=
+        await send(
+          documentId,
+          'TEST — NDA Ready for Review and Signature',
+          'This is a DMHOUSE Developer Mode TEST transaction. The secure Buyer Portal link is being used to validate the production transaction workflow.'
+        );
+
+
+      const roomId=
+        String(
+          result?.roomId||
+          ''
+        );
+
+
+      if(!roomId){
+
+        throw new Error(
+          'The invitation completed but did not return a transaction room ID.'
+        );
+      }
+
+
+      setSelectedId(
+        roomId
+      );
+
+      setArmed(false);
+
+      setMessage(
+        'TEST transaction created through the real production NDA pipeline. Transaction room: '+
+        roomId.slice(0,12)+
+        '…'
+      );
+
+
+      /*
+        Allow the workspace query to see the newly
+        created production transaction.
+      */
+
+      await new Promise(
+        resolve=>
+          setTimeout(
+            resolve,
+            500
+          )
+      );
+
+      await refresh();
+
+    }catch(reason){
+
+      setError(
+        reason instanceof Error
+          ?reason.message
+          :'Unable to create TEST transaction.'
+      );
+
+    }finally{
+
+      setStartingTest(false);
+      setBusy('');
+
+    }
+
+  }
+
 
   async function simulateNdaSigned(){
 
@@ -487,6 +882,219 @@ export default function DeveloperTransactionMode(){
         </div>
       </Card>
 
+      <Card className="mt-7 overflow-hidden">
+
+        <div className="border-b border-slate-100 bg-violet-50 p-6">
+
+          <div className="flex items-start gap-4">
+
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-violet-600 text-white">
+
+              <FlaskConical size={21}/>
+
+            </div>
+
+            <div>
+
+              <p className="text-xs font-bold uppercase tracking-[.18em] text-violet-600">
+                Production-path launcher
+              </p>
+
+              <h2 className="mt-1 text-xl font-semibold text-slate-950">
+                Start TEST Transaction
+              </h2>
+
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+                Creates a real buyer profile, real generated NDA, real seller signature,
+                real Buyer Portal invitation and real transaction room. The buyer identity
+                must contain TEST or DEV.
+              </p>
+
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <div className="p-6">
+
+          <div className="grid gap-5 lg:grid-cols-2">
+
+            <label className="block">
+
+              <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                Portfolio
+              </span>
+
+              <select
+                value={testPortfolioId}
+                onChange={
+                  event=>
+                    setTestPortfolioId(
+                      event.target.value
+                    )
+                }
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-400"
+              >
+
+                <option value="">
+                  Select portfolio
+                </option>
+
+                {portfolios
+                  .filter(
+                    portfolio=>
+                      ['active','negotiating','reserved']
+                        .includes(portfolio.status)
+                  )
+                  .map(
+                    portfolio=>(
+                      <option
+                        key={portfolio.id}
+                        value={portfolio.id}
+                      >
+                        {portfolio.name}
+                        {' · '}
+                        {portfolio.accountCount.toLocaleString()}
+                        {' accounts'}
+                      </option>
+                    )
+                  )
+                }
+
+              </select>
+
+            </label>
+
+
+            <label className="block">
+
+              <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                TEST company
+              </span>
+
+              <input
+                value={testCompany}
+                onChange={
+                  event=>
+                    setTestCompany(
+                      event.target.value
+                    )
+                }
+                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-violet-400"
+              />
+
+            </label>
+
+
+            <label className="block">
+
+              <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                TEST buyer name
+              </span>
+
+              <input
+                value={testBuyerName}
+                onChange={
+                  event=>
+                    setTestBuyerName(
+                      event.target.value
+                    )
+                }
+                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-violet-400"
+              />
+
+            </label>
+
+
+            <label className="block">
+
+              <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                Buyer invitation email
+              </span>
+
+              <input
+                type="email"
+                value={testBuyerEmail}
+                onChange={
+                  event=>
+                    setTestBuyerEmail(
+                      event.target.value
+                    )
+                }
+                placeholder="Your test email address"
+                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-violet-400"
+              />
+
+              <span className="mt-2 block text-xs leading-5 text-amber-700">
+                This uses the real invitation service, so an actual TEST Buyer Portal email will be sent.
+              </span>
+
+            </label>
+
+
+            <label className="block lg:col-span-2">
+
+              <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                Owner seller signature
+              </span>
+
+              <input
+                value={testSellerName}
+                onChange={
+                  event=>
+                    setTestSellerName(
+                      event.target.value
+                    )
+                }
+                placeholder="Owner legal name"
+                className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-violet-400"
+              />
+
+            </label>
+
+          </div>
+
+
+          <div className="mt-6 rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm leading-6 text-violet-900">
+
+            <b>Real path:</b>
+            {' '}
+            TEST Buyer → Generated NDA → Owner Signature → Buyer Invitation →
+            Transaction Room → Developer Simulator.
+
+          </div>
+
+
+          <PrimaryButton
+            className="mt-5 w-full"
+            disabled={
+              startingTest||
+              busy!==''
+            }
+            onClick={
+              ()=>void startTestTransaction()
+            }
+          >
+
+            <Play
+              className="mr-2"
+              size={16}
+            />
+
+            {startingTest
+              ?'Starting TEST Transaction…'
+              :'Start TEST Transaction'
+            }
+
+          </PrimaryButton>
+
+        </div>
+
+      </Card>
+
+
       {message&&(
         <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
           {message}
@@ -521,9 +1129,9 @@ export default function DeveloperTransactionMode(){
               </p>
 
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Create or use a buyer whose company, contact name,
-                or email contains TEST or DEV. Developer Mode will
-                automatically recognize it.
+                Use Start TEST Transaction above, or select an existing
+                buyer whose company, contact name, or email contains
+                TEST or DEV.
               </p>
             </div>
           ):(
