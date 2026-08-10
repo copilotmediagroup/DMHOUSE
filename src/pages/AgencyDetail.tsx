@@ -675,6 +675,61 @@ export default function AgencyDetail(){
 
   const websiteHref=externalUrl(agency.website);
 
+  const closingExecution=
+    !secureTransaction
+      ?null
+
+      :secureTransaction.finalFileReleasedAt
+        ?{
+            key:'complete',
+            label:'Deal Complete',
+            detail:'Payment was confirmed and the final portfolio has been securely released.',
+            progress:100,
+            tone:'emerald'
+          }
+
+      :secureTransaction.paymentConfirmedAt
+        ?{
+            key:'payment_confirmed',
+            label:'Payment Confirmed',
+            detail:'Cleared payment is confirmed. Final portfolio release is being completed through the secure transaction.',
+            progress:90,
+            tone:'emerald'
+          }
+
+      :secureTransaction.purchaseStatus==='fully_executed'
+        ?{
+            key:'awaiting_owner_payment',
+            label:'Waiting for Owner Payment Confirmation',
+            detail:'The Purchase Agreement is signed. The employee has completed their transaction action. The Owner must verify cleared funds before final release.',
+            progress:75,
+            tone:'amber'
+          }
+
+      :(
+          secureTransaction.purchaseStatus==='sent_to_buyer'||
+          secureTransaction.purchaseStatus==='seller_signed'
+        )
+        ?{
+            key:'awaiting_purchase_signature',
+            label:'Waiting for Buyer Signature',
+            detail:'The Purchase Agreement has been sent. No payment or final-file action is available until it is signed.',
+            progress:50,
+            tone:'blue'
+          }
+
+      :secureTransaction.ndaStatus==='fully_executed'
+        ?{
+            key:'purchase_ready',
+            label:'Purchase Agreement Ready',
+            detail:'The NDA is signed. The employee should send the Purchase Agreement next.',
+            progress:25,
+            tone:'blue'
+          }
+
+      :null;
+
+
   const ndaExecuted=
     secureTransaction?.ndaStatus==='fully_executed';
 
@@ -1308,6 +1363,224 @@ export default function AgencyDetail(){
                   Open Exact Transaction
                 </Link>
               )}
+
+            </div>
+
+          </div>
+        )}
+
+        {secureTransaction&&closingExecution&&(
+          <div
+            className={
+              'mb-6 overflow-hidden rounded-2xl border '+
+              (
+                closingExecution.tone==='emerald'
+                  ?'border-emerald-200'
+                  :closingExecution.tone==='amber'
+                    ?'border-amber-200'
+                    :'border-blue-200'
+              )
+            }
+          >
+            {/* CLOSING HANDOFF CONTROL */}
+
+            <div
+              className={
+                'p-5 md:p-6 '+
+                (
+                  closingExecution.tone==='emerald'
+                    ?'bg-emerald-50'
+                    :closingExecution.tone==='amber'
+                      ?'bg-amber-50'
+                      :'bg-blue-50'
+                )
+              }
+            >
+
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+
+                <div className="max-w-3xl">
+
+                  <p className="text-[11px] font-bold uppercase tracking-[.18em] text-slate-500">
+                    Closing control
+                  </p>
+
+                  <h3 className="mt-2 text-xl font-bold text-slate-950">
+                    {closingExecution.label}
+                  </h3>
+
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {closingExecution.detail}
+                  </p>
+
+                </div>
+
+
+                <div className="shrink-0">
+
+                  {closingExecution.key==='awaiting_owner_payment'&&
+                    role==='employee'&&(
+                      <div className="rounded-2xl border border-amber-200 bg-white px-5 py-3 text-center">
+
+                        <p className="text-xs font-bold uppercase tracking-wide text-amber-700">
+                          Employee action complete
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                          Waiting for Owner
+                        </p>
+
+                      </div>
+                    )}
+
+
+                  {closingExecution.key==='awaiting_owner_payment'&&
+                    role==='owner'&&(
+                      <Link
+                        to={transactionPath}
+                        className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-amber-600 px-6 text-sm font-bold text-white hover:bg-amber-700"
+                      >
+                        Review Payment & Release
+                      </Link>
+                    )}
+
+
+                  {closingExecution.key==='purchase_ready'&&
+                    role==='employee'&&(
+                      <Link
+                        to={transactionPath}
+                        className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-blue-600 px-6 text-sm font-bold text-white hover:bg-blue-700"
+                      >
+                        Send Purchase Agreement
+                      </Link>
+                    )}
+
+
+                  {(
+                    closingExecution.key==='awaiting_purchase_signature'||
+                    closingExecution.key==='payment_confirmed'||
+                    closingExecution.key==='complete'
+                  )&&(
+                    <Link
+                      to={transactionPath}
+                      className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-blue-600 px-6 text-sm font-bold text-white hover:bg-blue-700"
+                    >
+                      Open Exact Transaction
+                    </Link>
+                  )}
+
+                </div>
+
+              </div>
+
+
+              <div className="mt-6">
+
+                <div className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-500">
+
+                  <span>Closing progress</span>
+
+                  <span>
+                    {closingExecution.progress}%
+                  </span>
+
+                </div>
+
+                <div className="h-2 overflow-hidden rounded-full bg-white">
+
+                  <div
+                    className={
+                      'h-full rounded-full '+
+                      (
+                        closingExecution.tone==='emerald'
+                          ?'bg-emerald-500'
+                          :closingExecution.tone==='amber'
+                            ?'bg-amber-500'
+                            :'bg-blue-500'
+                      )
+                    }
+                    style={{
+                      width:String(
+                        closingExecution.progress
+                      )+'%'
+                    }}
+                  />
+
+                </div>
+
+              </div>
+
+            </div>
+
+
+            <div className="grid gap-px bg-slate-100 sm:grid-cols-4">
+
+              {[
+                {
+                  label:'Agreement Signed',
+                  complete:
+                    secureTransaction.purchaseStatus===
+                    'fully_executed'
+                },
+
+                {
+                  label:'Payment Confirmed',
+                  complete:Boolean(
+                    secureTransaction.paymentConfirmedAt
+                  )
+                },
+
+                {
+                  label:'Final Released',
+                  complete:Boolean(
+                    secureTransaction.finalFileReleasedAt
+                  )
+                },
+
+                {
+                  label:'Deal Complete',
+                  complete:Boolean(
+                    secureTransaction.finalFileReleasedAt
+                  )
+                }
+              ].map(item=>(
+                <div
+                  key={item.label}
+                  className="bg-white p-4"
+                >
+
+                  <div className="flex items-center gap-2">
+
+                    <span
+                      className={
+                        'grid h-6 w-6 place-items-center rounded-full text-xs font-bold '+
+                        (
+                          item.complete
+                            ?'bg-emerald-600 text-white'
+                            :'bg-slate-100 text-slate-400'
+                        )
+                      }
+                    >
+                      {item.complete?'✓':'·'}
+                    </span>
+
+                    <span
+                      className={
+                        'text-xs font-semibold '+
+                        (
+                          item.complete
+                            ?'text-emerald-800'
+                            :'text-slate-500'
+                        )
+                      }
+                    >
+                      {item.label}
+                    </span>
+
+                  </div>
+
+                </div>
+              ))}
 
             </div>
 
