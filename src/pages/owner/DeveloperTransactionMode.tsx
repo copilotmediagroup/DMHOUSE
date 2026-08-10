@@ -1,11 +1,16 @@
 import {
-  CheckCircle2,
+CheckCircle2,
   FlaskConical,
   LockKeyhole,
   Play,
   RefreshCw,
   ShieldAlert
 } from 'lucide-react';
+import EmployeeFirstRunTour, {
+  employeeTourSteps,
+  launchEmployeeTourPreview,
+} from '../../components/employee/EmployeeFirstRunTour';
+
 import {
   useCallback,
   useEffect,
@@ -157,6 +162,12 @@ export default function DeveloperTransactionMode(){
 
   const [startingTest,setStartingTest]=
     useState(false);
+
+  const [tourPreviewOpen,setTourPreviewOpen]=
+    useState(false);
+
+  const [tourPreviewStep,setTourPreviewStep]=
+    useState(0);
 
   const load=useCallback(async()=>{
 
@@ -1090,6 +1101,7 @@ export default function DeveloperTransactionMode(){
   if(role!=='owner'){
     return (
       <div className="mx-auto max-w-3xl p-8">
+
         <Card className="border-red-200 bg-red-50 p-8">
           <LockKeyhole
             className="text-red-600"
@@ -1110,6 +1122,72 @@ export default function DeveloperTransactionMode(){
 
   return (
     <div className="mx-auto max-w-[1300px] p-5 md:p-8 lg:p-10">
+
+      <div className="mb-7 rounded-[28px] border border-blue-200 bg-blue-50 p-6 md:p-7">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[.18em] text-blue-600">
+              Employee Onboarding
+            </p>
+
+            <h2 className="mt-2 text-xl font-semibold text-blue-950">
+              Employee First-Run Tour Preview
+            </h2>
+
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-blue-800">
+              Preview the guided tour exactly as a new employee will see it after certification.
+              This does not change your Owner role and does not change any employee completion record.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={()=>{
+              setTourPreviewStep(0);
+              setTourPreviewOpen(true);
+            }}
+            className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700"
+          >
+            Launch Tour Preview
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+          <label>
+            <span className="mb-2 block text-xs font-bold uppercase tracking-wider text-blue-700">
+              Jump to step
+            </span>
+
+            <select
+              value={tourPreviewStep}
+              onChange={(event)=>setTourPreviewStep(Number(event.target.value))}
+              className="w-full rounded-xl border border-blue-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+            >
+              {employeeTourSteps.map((item,index)=>(
+                <option key={item.title} value={index}>
+                  {index+1}. {item.title}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button
+            type="button"
+            onClick={()=>{
+              setTourPreviewOpen(true);
+              window.setTimeout(
+                ()=>launchEmployeeTourPreview(tourPreviewStep),
+                0,
+              );
+            }}
+            className="rounded-xl border border-blue-300 bg-white px-5 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+          >
+            Preview Selected Step
+          </button>
+        </div>
+      </div>
+
+
 
       <header className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
@@ -1704,6 +1782,12 @@ export default function DeveloperTransactionMode(){
         </Card>
       )}
 
+    {tourPreviewOpen && (
+      <EmployeeFirstRunTour
+        enabled={true}
+        preview={true}
+      />
+    )}
     </div>
   );
 }

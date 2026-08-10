@@ -43,6 +43,7 @@ import { useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { usePortfolioStore } from '../store/PortfolioStore';
 import { supabase } from '../lib/supabase';
+import EmployeeFirstRunTour from '../components/employee/EmployeeFirstRunTour';
 
 type NavItem = readonly [label: string, to: string, icon: LucideIcon];
 
@@ -194,6 +195,13 @@ export default function Shell({ children }: { children: ReactNode }) {
         </div>
         {children}
       </main>
+
+      {role === 'employee' && (
+        <EmployeeFirstRunTour
+          enabled={Boolean(profile)}
+          userId={profile?.id}
+        />
+      )}
     </div>
   );
 }
