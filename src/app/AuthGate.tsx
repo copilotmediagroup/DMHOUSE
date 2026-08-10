@@ -32,6 +32,12 @@ export default function AuthGate({children}:{children:ReactNode}){
   const [session,setSession]=useState<any>(null);
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
+  const [forgotMode,setForgotMode]=useState(false);
+  const [forgotSent,setForgotSent]=useState(false);
+  const [recoveryMode,setRecoveryMode]=useState(
+    ()=>/type=recovery/.test(`${window.location.hash}&${window.location.search}`)
+  );
+  const [recoverySuccess,setRecoverySuccess]=useState(false);
   const accountType =
     session?.user?.user_metadata?.account_type ||
     (buyerPath ? 'buyer' : 'owner');
@@ -76,6 +82,9 @@ useEmploymentAccessGuard(
     const {data}=supabase.auth.onAuthStateChange((event,nextSession)=>{
       if(!active)return;
       setSession(nextSession);
+      if(event==='PASSWORD_RECOVERY'){
+        setRecoveryMode(true);
+      }
       if(!callbackAtBoot||event==='SIGNED_IN'||event==='PASSWORD_RECOVERY'||event==='USER_UPDATED'){
         callbackResolved=true;
         setReady(true);
@@ -117,8 +126,144 @@ useEmploymentAccessGuard(
     setBusy(false);
   }
 
+
+  async function requestPasswordReset(e:FormEvent<HTMLFormElement>){
+    e.preventDefault();
+
+    setBusy(true);
+    setError('');
+    setForgotSent(false);
+
+    const form=new FormData(e.currentTarget);
+    const email=String(form.get('email')||'').trim();
+
+    if(!email){
+      setError('Enter your email address.');
+      setBusy(false);
+      return;
+    }
+
+    const redirectTo=`${window.location.origin}/?type=recovery`;
+
+    const {error:resetError}=await supabase.auth.resetPasswordForEmail(
+      email,
+      {redirectTo},
+    );
+
+    if(resetError){
+      setError(resetError.message);
+      setBusy(false);
+      return;
+    }
+
+    setForgotSent(true);
+    setBusy(false);
+  }
+
+  async function changeRecoveredPassword(e:FormEvent<HTMLFormElement>){
+    e.preventDefault();
+
+    setBusy(true);
+    setError('');
+
+    const form=new FormData(e.currentTarget);
+    const password=String(form.get('password')||'');
+    const confirmPassword=String(form.get('confirmPassword')||'');
+
+    if(password.length<8){
+      setError('Password must be at least 8 characters.');
+      setBusy(false);
+      return;
+    }
+
+    if(password!==confirmPassword){
+      setError('The passwords do not match.');
+      setBusy(false);
+      return;
+    }
+
+    const {error:updateError}=await supabase.auth.updateUser({
+      password,
+    });
+
+    if(updateError){
+      setError(updateError.message);
+      setBusy(false);
+      return;
+    }
+
+    await supabase.auth.signOut({scope:'local'});
+
+    window.history.replaceState({},'', '/');
+
+    setSession(null);
+    setRecoveryMode(false);
+    setRecoverySuccess(true);
+    setForgotMode(false);
+    setForgotSent(false);
+    setBusy(false);
+  }
+
   if(buyerInviteEntry)return <GatewayLoading buyer/>;
   if(!ready)return <GatewayLoading buyer={buyerPath||callbackAtBoot}/>;
+
+  if(recoveryMode && session){
+    return (
+      <div className="grid min-h-screen place-items-center bg-[#08101f] p-5">
+        <Card className="w-full max-w-md p-8">
+          <p className="text-xs font-semibold tracking-[.24em] text-blue-600">
+            DATA MARKET HOUSE
+          </p>
+
+          <h1 className="mt-3 text-3xl font-semibold">
+            Reset password
+          </h1>
+
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Enter a new password for your Data Market House account.
+          </p>
+
+          <form
+            className="mt-7 space-y-4"
+            onSubmit={changeRecoveredPassword}
+          >
+            <Field label="New password">
+              <input
+                className={inputClass}
+                name="password"
+                type="password"
+                autoComplete="new-password"
+                minLength={8}
+                required
+              />
+            </Field>
+
+            <Field label="Confirm new password">
+              <input
+                className={inputClass}
+                name="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                minLength={8}
+                required
+              />
+            </Field>
+
+            {error && (
+              <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+                {error}
+              </p>
+            )}
+
+            <PrimaryButton className="w-full" disabled={busy}>
+              {busy ? 'Updating password…' : 'Set new password'}
+            </PrimaryButton>
+          </form>
+        </Card>
+      </div>
+    );
+  }
+
   if(session)return <>{children}</>;
 
   const params=new URLSearchParams(location.search);
@@ -133,45 +278,122 @@ useEmploymentAccessGuard(
         </p>
 
         <h1 className="mt-3 text-3xl font-semibold">
-          {buyerPath ? 'Buyer Portal' : 'Sales OS'}
+          {forgotMode
+            ? 'Reset your password'
+            : buyerPath
+              ? 'Buyer Portal'
+              : 'Sales OS'}
         </h1>
 
-        <p className="mt-2 text-sm text-slate-500">
-          {buyerPath ? 'Secure buyer authentication' : 'Authorized access only'}
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          {forgotMode
+            ? 'Enter your account email and we will send you a secure password reset link.'
+            : buyerPath
+              ? 'Secure buyer authentication'
+              : 'Authorized access only'}
         </p>
 
-        <form className="mt-7 space-y-4" onSubmit={submit}>
-          <Field label="Email">
-            <input
-              className={inputClass}
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-            />
-          </Field>
+        {recoverySuccess && !forgotMode && (
+          <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
+            Password changed successfully. Sign in with your new password.
+          </div>
+        )}
 
-          <Field label="Password">
-            <input
-              className={inputClass}
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              minLength={6}
-              required
-            />
-          </Field>
+        {forgotMode ? (
+          <>
+            <form
+              className="mt-7 space-y-4"
+              onSubmit={requestPasswordReset}
+            >
+              <Field label="Email">
+                <input
+                  className={inputClass}
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                />
+              </Field>
 
-          {error && (
-            <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
-              {error}
-            </p>
-          )}
+              {error && (
+                <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+                  {error}
+                </p>
+              )}
 
-          <PrimaryButton className="w-full" disabled={busy}>
-            {busy ? 'Signing in…' : 'Sign in'}
-          </PrimaryButton>
-        </form>
+              {forgotSent && (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm leading-6 text-emerald-700">
+                  If that email belongs to a Data Market House account,
+                  a password reset email has been sent. Check your inbox
+                  and spam folder.
+                </div>
+              )}
+
+              <PrimaryButton className="w-full" disabled={busy}>
+                {busy ? 'Sending reset link…' : 'Send reset link'}
+              </PrimaryButton>
+            </form>
+
+            <button
+              type="button"
+              className="mt-5 w-full text-center text-sm font-semibold text-blue-600 hover:text-blue-700"
+              onClick={()=>{
+                setForgotMode(false);
+                setForgotSent(false);
+                setError('');
+              }}
+            >
+              Back to sign in
+            </button>
+          </>
+        ) : (
+          <>
+            <form className="mt-7 space-y-4" onSubmit={submit}>
+              <Field label="Email">
+                <input
+                  className={inputClass}
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                />
+              </Field>
+
+              <Field label="Password">
+                <input
+                  className={inputClass}
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  minLength={6}
+                  required
+                />
+              </Field>
+
+              {error && (
+                <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+                  {error}
+                </p>
+              )}
+
+              <PrimaryButton className="w-full" disabled={busy}>
+                {busy ? 'Signing in…' : 'Sign in'}
+              </PrimaryButton>
+            </form>
+
+            <button
+              type="button"
+              className="mt-5 w-full text-center text-sm font-semibold text-blue-600 hover:text-blue-700"
+              onClick={()=>{
+                setForgotMode(true);
+                setRecoverySuccess(false);
+                setError('');
+              }}
+            >
+              Forgot password?
+            </button>
+          </>
+        )}
       </Card>
     </div>
   );

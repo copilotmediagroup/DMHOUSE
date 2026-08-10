@@ -19,6 +19,7 @@ FlaskConical,
   LayoutDashboard,
   ListChecks,
   LockKeyhole,
+KeyRound,
   Mail,
   Menu,
   MessageSquareText,
@@ -56,6 +57,7 @@ const ownerPrimary: readonly NavItem[] = [
 ['Employees', '/employees', Users],
   ['Territories', '/territories', MapPinned],
 ['Settings', '/settings/payment', Settings],
+['Account Security', '/settings/security', KeyRound],
 ]
 
 const ownerAdvanced: readonly NavItem[] = [
