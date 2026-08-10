@@ -339,8 +339,49 @@ export default function EmployeeManagement() {
 
     setInviteLink(link);
 
+    const {
+      data: sendResult,
+      error: sendError,
+    } =
+      await supabase.functions.invoke(
+        'send-employee-invite',
+        {
+          body: {
+            inviteId:
+              created.invite_id,
+            inviteToken:
+              created.invite_token,
+            inviteUrl:
+              link,
+          },
+        },
+      );
+
+    if (
+      sendError ||
+      sendResult?.ok === false
+    ) {
+      setError(
+        sendResult?.error ||
+        sendError?.message ||
+        'The employee invitation was created, but the email could not be sent.',
+      );
+
+      setMessage(
+        `Invitation created for ${email}. You can still use the secure invite link below.`,
+      );
+
+      event.currentTarget.reset();
+
+      await load();
+
+      setBusy('');
+
+      return;
+    }
+
     setMessage(
-      `Invitation created for ${email}. It expires ${niceDate(
+      `Invitation emailed to ${email}. It expires ${niceDate(
         created.expires_at,
       )}.`,
     );
