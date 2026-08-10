@@ -675,6 +675,56 @@ export default function AgencyDetail(){
 
   const websiteHref=externalUrl(agency.website);
 
+  const ndaExecuted=
+    secureTransaction?.ndaStatus==='fully_executed';
+
+  const purchaseSent=
+    secureTransaction?.purchaseStatus==='sent_to_buyer'||
+    secureTransaction?.purchaseStatus==='seller_signed';
+
+  const purchaseExecuted=
+    secureTransaction?.purchaseStatus==='fully_executed';
+
+  const transactionNextAction=
+    secureTransaction?.finalFileReleasedAt
+      ?{
+          label:'View Completed Transaction',
+          detail:'The final portfolio has been released.',
+          tone:'emerald'
+        }
+      :secureTransaction?.paymentConfirmedAt
+        ?{
+            label:'View Release Status',
+            detail:'Payment has been confirmed. Final-file release is controlled by the Owner.',
+            tone:'blue'
+          }
+        :purchaseExecuted
+          ?{
+              label:'Waiting for Owner',
+              detail:'The Purchase Agreement is signed. The Owner must confirm cleared payment.',
+              tone:'amber'
+            }
+          :purchaseSent
+            ?{
+                label:'Waiting for Buyer Signature',
+                detail:'The Purchase Agreement has been sent and is waiting for the buyer.',
+                tone:'amber'
+              }
+            :ndaExecuted
+              ?{
+                  label:'Send Purchase Agreement',
+                  detail:'The NDA is signed. Send the Purchase Agreement from this exact transaction.',
+                  tone:'emerald'
+                }
+              :secureTransaction
+                ?{
+                    label:'Waiting for NDA Signature',
+                    detail:'The NDA has been sent and is waiting for the buyer.',
+                    tone:'amber'
+                  }
+                :null;
+
+
   const ndaAvailablePortfolios=
     portfolios.filter(
       portfolio=>
@@ -1073,7 +1123,7 @@ export default function AgencyDetail(){
                 to={transactionPath}
                 className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700"
               >
-                Continue Transaction
+                {transactionNextAction?.label||'Continue Transaction'}
               </Link>
             )}
 
@@ -1200,6 +1250,67 @@ export default function AgencyDetail(){
         {secureTransactionError&&(
           <div className="mb-5 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
             Secure transaction unavailable: {secureTransactionError}
+          </div>
+        )}
+
+        {secureTransaction&&transactionNextAction&&(
+          <div
+            className={
+              'mb-5 rounded-2xl border p-5 '+
+              (
+                transactionNextAction.tone==='emerald'
+                  ?'border-emerald-200 bg-emerald-50'
+                  :transactionNextAction.tone==='amber'
+                    ?'border-amber-200 bg-amber-50'
+                    :'border-blue-200 bg-blue-50'
+              )
+            }
+          >
+            {/* POST NDA NEXT ACTION */}
+
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+
+              <div>
+
+                <p className="text-[11px] font-bold uppercase tracking-[.16em] text-slate-500">
+                  Next transaction action
+                </p>
+
+                <h3 className="mt-1 text-lg font-bold text-slate-950">
+                  {transactionNextAction.label}
+                </h3>
+
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  {transactionNextAction.detail}
+                </p>
+
+              </div>
+
+              {ndaExecuted&&!purchaseSent&&!purchaseExecuted&&(
+                <Link
+                  to={transactionPath}
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 px-6 text-sm font-bold text-white hover:bg-emerald-700"
+                >
+                  Send Purchase Agreement
+                </Link>
+              )}
+
+              {secureTransaction&&(
+                purchaseSent||
+                purchaseExecuted||
+                Boolean(secureTransaction.paymentConfirmedAt)||
+                Boolean(secureTransaction.finalFileReleasedAt)
+              )&&(
+                <Link
+                  to={transactionPath}
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-2xl bg-blue-600 px-6 text-sm font-bold text-white hover:bg-blue-700"
+                >
+                  Open Exact Transaction
+                </Link>
+              )}
+
+            </div>
+
           </div>
         )}
 
