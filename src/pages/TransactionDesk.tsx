@@ -17,6 +17,7 @@ import {
   type AgreementFields
 } from '../store/AgreementStore';
 import {usePortfolioStore} from '../store/PortfolioStore';
+import {useBuyerPortalStore} from '../store/BuyerPortalStore';
 import {supabase} from '../lib/supabase';
 import {deriveTransactionIntelligence} from '../lib/transactionIntelligence';
 import TransactionSummary from './transaction/TransactionSummary';
@@ -116,6 +117,7 @@ function Step({
 }
 
 export default function TransactionDesk(){
+  const {closeDeal}=useBuyerPortalStore();
   const {
     profile,
     uploadPortfolioFile
@@ -469,7 +471,17 @@ export default function TransactionDesk(){
         if(error)throw error;
       }
 
-      setMessage(
+            /*
+        SECURE_SALE_COMPLETION_BRIDGE
+
+        Final release is complete.
+        Use the existing Buyer Deal close engine to create
+        financial records exactly once.
+      */
+
+      await closeDeal(t.room_id);
+
+setMessage(
         `Payment confirmed. DMHOUSE automatically released the final portfolio to ${t.buyer_company}.`
       );
 
