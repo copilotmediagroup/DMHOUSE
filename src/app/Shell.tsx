@@ -11,6 +11,7 @@ import {
   Columns3,
   FileSignature,
   FileWarning,
+FlaskConical,
   FolderOpen,
   Handshake,
   Inbox,
@@ -57,7 +58,9 @@ const ownerPrimary: readonly NavItem[] = [
 ['Settings', '/settings/payment', Settings],
 ]
 
-const ownerAdvanced: readonly NavItem[] = [];
+const ownerAdvanced: readonly NavItem[] = [
+['Developer Mode', '/developer/transactions', FlaskConical],
+];
 
 const buyerNav: readonly NavItem[] = [
   ['Workspace', '/buyer', LayoutDashboard],
