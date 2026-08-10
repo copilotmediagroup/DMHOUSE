@@ -117,12 +117,7 @@ export default function DeveloperTransactionMode(){
     portfolios
   }=usePortfolioStore();
 
-  const {
-    upsertBuyer,
-    save,
-    sign,
-    send
-  }=useAgreementStore();
+  const {upsertBuyer,save,sign,send,workflowState}=useAgreementStore();
 
   const [rows,setRows]=
     useState<TransactionRow[]>([]);
@@ -304,7 +299,7 @@ export default function DeveloperTransactionMode(){
           'deal_documents_generated'
         )
         .select(
-          'id,document_type,status'
+          'id,document_type,status,field_values,seller_name,seller_title,buyer_id'
         )
         .eq(
           'room_id',
@@ -724,6 +719,304 @@ export default function DeveloperTransactionMode(){
 
   }
 
+
+  async function sendDeveloperPurchaseAgreement(){
+
+    if(
+      !selected||
+      !armed
+    ){
+      return;
+    }
+
+    if(
+      selected.nda_status!=='fully_executed'
+    ){
+      setError(
+        'Buyer must sign the NDA first.'
+      );
+      return;
+    }
+
+    if(
+      selected.purchase_status==='sent_to_buyer'||
+      selected.purchase_status==='seller_signed'
+    ){
+      setError(
+        'Purchase Agreement is already waiting for the buyer.'
+      );
+      return;
+    }
+
+    if(
+      selected.purchase_status==='fully_executed'
+    ){
+      setError(
+        'Purchase Agreement is already signed.'
+      );
+      return;
+    }
+
+    setBusy('send-purchase');
+    setMessage('');
+    setError('');
+
+    try{
+
+      /*
+        Use the actual executed NDA document as the source
+        of buyer, portfolio and transaction terms.
+      */
+
+      const nda=
+        await getLatestDocument(
+          'nda'
+        );
+
+      if(!nda){
+        throw new Error(
+          'The executed NDA document is unavailable.'
+        );
+      }
+
+      if(
+        nda.status!=='fully_executed'
+      ){
+        throw new Error(
+          'The NDA must be fully executed before sending the Purchase Agreement.'
+        );
+      }
+
+      if(!nda.field_values){
+        throw new Error(
+          'The executed NDA document data is unavailable.'
+        );
+      }
+
+
+      /*
+        Same payment-settings gate used by Transaction Desk.
+      */
+
+      const {
+        data:paymentSettings,
+        error:paymentError
+      }=
+        await supabase.rpc(
+          'dmh_get_company_payment_settings'
+        );
+
+      if(paymentError){
+        throw paymentError;
+      }
+
+      if(
+        !paymentSettings?.beneficiary_name||
+        !paymentSettings?.bank_name||
+        !paymentSettings?.routing_number||
+        !paymentSettings?.account_number
+      ){
+        throw new Error(
+          'Owner must complete Payment & Wire Instructions before a Purchase Agreement can be sent.'
+        );
+      }
+
+
+      /*
+        Preserve the executed NDA fields and append the
+        real production wire/payment instructions.
+      */
+
+      const fields:AgreementFields={
+        ...(nda.field_values as AgreementFields),
+
+        deliveryMethod:
+          'Secure Deal Room',
+
+        deliveryDeadline:
+          'After confirmed payment',
+
+        paymentTerms:
+          paymentSettings.payment_terms||
+          'Payment in full by wire transfer before final portfolio release.',
+
+        wireBeneficiary:
+          paymentSettings.beneficiary_name||'',
+
+        wireBankName:
+          paymentSettings.bank_name||'',
+
+        wireBankAddress:
+          paymentSettings.bank_address||'',
+
+        wireRoutingNumber:
+          paymentSettings.routing_number||'',
+
+        wireAccountNumber:
+          paymentSettings.account_number||'',
+
+        wireSwiftBic:
+          paymentSettings.swift_bic||'',
+
+        wireReference:
+          paymentSettings.wire_reference||'',
+
+        wirePaymentDeadline:
+          paymentSettings.payment_deadline||'',
+
+        wireAdditionalInstructions:
+          paymentSettings.additional_instructions||''
+      };
+
+
+      /*
+        Same production document renderer used by
+        Transaction Desk.
+      */
+
+      const html=
+        buildAgreementHtml(
+          'purchase_agreement',
+          fields,
+          false
+        );
+
+
+      /*
+        Reuse an existing unsent PA if one exists.
+        Otherwise create it inside the exact room.
+      */
+
+      const existing=
+        await getLatestDocument(
+          'purchase_agreement'
+        );
+
+      let documentId=
+        existing?.id||'';
+
+      if(documentId){
+
+        const existingState=
+          await workflowState(
+            documentId
+          );
+
+        if(existingState?.buyerSigned){
+          throw new Error(
+            'This Purchase Agreement has already been signed by the buyer and cannot be regenerated.'
+          );
+        }
+
+        await save({
+          documentId,
+          roomId:
+            selected.room_id,
+          buyerId:
+            nda.buyer_id||
+            selected.buyer_user_id||
+            selected.buyer_id,
+          portfolioId:
+            selected.portfolio_id,
+          type:
+            'purchase_agreement',
+          title:
+            'Purchase Agreement — '+
+            selected.portfolio_name,
+          fields,
+          html
+        });
+
+      }else{
+
+        documentId=
+          await save({
+            roomId:
+              selected.room_id,
+            buyerId:
+              nda.buyer_id||
+              selected.buyer_user_id||
+              selected.buyer_id,
+            portfolioId:
+              selected.portfolio_id,
+            type:
+              'purchase_agreement',
+            title:
+              'Purchase Agreement — '+
+              selected.portfolio_name,
+            fields,
+            html
+          });
+      }
+
+
+      /*
+        Real seller signature.
+      */
+
+      const state=
+        await workflowState(
+          documentId
+        );
+
+      if(!state?.sellerSigned){
+
+        const signer=
+          nda.seller_name||
+          fields.sellerName||
+          profile?.full_name||
+          'Data Market House';
+
+        const title=
+          nda.seller_title||
+          fields.sellerTitle||
+          'Portfolio Sales Specialist';
+
+        await sign(
+          documentId,
+          signer,
+          title,
+          'script'
+        );
+      }
+
+
+      /*
+        Real buyer invitation/send engine.
+      */
+
+      await send(
+        documentId,
+        'Purchase Agreement Ready for Signature',
+        'Your Purchase Agreement is ready. Review and sign it securely inside your Data Market House Buyer Portal.'
+      );
+
+
+      setMessage(
+        'Purchase Agreement sent to '+
+        selected.buyer_email+
+        '.'
+      );
+
+      await refresh();
+
+    }catch(reason){
+
+      setError(
+        reason instanceof Error
+          ?reason.message
+          :'Unable to send Purchase Agreement.'
+      );
+
+    }finally{
+
+      setBusy('');
+
+    }
+
+  }
+
+
   async function simulatePurchaseSigned(){
 
     if(
@@ -746,7 +1039,7 @@ export default function DeveloperTransactionMode(){
 
       if(!document){
         throw new Error(
-          'This TEST transaction has no Purchase Agreement yet. Send it normally once, then Developer Mode can advance it.'
+          'This TEST transaction has no Purchase Agreement yet. Use Send Purchase Agreement in Developer Mode first.'
         );
       }
 
@@ -1274,6 +1567,30 @@ export default function DeveloperTransactionMode(){
                     }
                     onClick={
                       ()=>void simulateNdaSigned()
+                    }
+                  />
+
+                  <Action
+                    title="Send Purchase Agreement"
+                    detail="Creates, seller-signs and sends the real Purchase Agreement through the production transaction engine."
+                    complete={
+                      selected.purchase_status==='sent_to_buyer'||
+                      selected.purchase_status==='seller_signed'||
+                      selected.purchase_status==='fully_executed'
+                    }
+                    disabled={
+                      !armed||
+                      busy!==''||
+                      selected.nda_status!=='fully_executed'||
+                      selected.purchase_status==='sent_to_buyer'||
+                      selected.purchase_status==='seller_signed'||
+                      selected.purchase_status==='fully_executed'
+                    }
+                    busy={
+                      busy==='send-purchase'
+                    }
+                    onClick={
+                      ()=>void sendDeveloperPurchaseAgreement()
                     }
                   />
 
