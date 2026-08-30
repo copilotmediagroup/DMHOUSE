@@ -28,6 +28,7 @@ type Invite = {
   intended_full_name: string | null;
   company_id: string;
   expires_at: string;
+  academy_required: boolean;
 };
 
 export default function AcademyInviteRegistration() {
@@ -65,7 +66,7 @@ export default function AcademyInviteRegistration() {
 
       if (!token) {
         setError(
-          'This Academy invitation is missing its secure token.',
+          'This employee invitation is missing its secure token.',
         );
         setLoading(false);
         return;
@@ -161,7 +162,7 @@ export default function AcademyInviteRegistration() {
       invite.email.toLowerCase()
     ) {
       setError(
-        'Your email must match the address that received this Academy invitation.',
+        'Your email must match the address that received this employee invitation.',
       );
       setBusy(false);
       return;
@@ -211,8 +212,11 @@ export default function AcademyInviteRegistration() {
 
     if (data.session) {
       window.location.replace(
-        '/academy',
+        invite.academy_required
+          ? '/academy'
+          : '/employee',
       );
+
       return;
     }
 
@@ -228,7 +232,7 @@ export default function AcademyInviteRegistration() {
 
           <p className="mt-4 text-sm font-medium text-slate-300">
             Validating your secure
-            Academy invitation…
+            employee invitation…
           </p>
         </div>
       </div>
@@ -246,7 +250,7 @@ export default function AcademyInviteRegistration() {
           </div>
 
           <p className="mt-6 text-xs font-bold uppercase tracking-[.2em] text-red-600">
-            Academy invitation unavailable
+            Employee invitation unavailable
           </p>
 
           <h1 className="mt-2 text-3xl font-semibold">

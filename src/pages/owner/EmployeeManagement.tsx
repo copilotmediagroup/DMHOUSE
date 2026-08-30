@@ -291,6 +291,10 @@ export default function EmployeeManagement() {
       .trim()
       .toLowerCase();
 
+    const academyRequired =
+      form.get('academyRequired') ===
+      'on';
+
     if (!email) return;
 
     setBusy('invite');
@@ -306,6 +310,8 @@ export default function EmployeeManagement() {
           p_full_name:
             fullName || null,
           p_expires_hours: 168,
+          p_academy_required:
+            academyRequired,
         },
       );
 
@@ -381,9 +387,11 @@ export default function EmployeeManagement() {
     }
 
     setMessage(
-      `Invitation emailed to ${email}. It expires ${niceDate(
-        created.expires_at,
-      )}.`,
+      academyRequired
+        ? `Academy invitation emailed to ${email}. It expires ${niceDate(
+            created.expires_at,
+          )}.`
+        : `Employee invitation emailed to ${email}. Academy was waived by Owner. Employee Sales OS access begins after account setup.`,
     );
 
     event.currentTarget.reset();
@@ -569,8 +577,8 @@ export default function EmployeeManagement() {
                 </h2>
 
                 <p className="text-sm text-slate-500">
-                  Academy access only
-                  until certification.
+                  Choose the employee's
+                  Academy requirement.
                 </p>
               </div>
             </div>
@@ -597,6 +605,42 @@ export default function EmployeeManagement() {
                 />
               </Field>
 
+              <label className="block cursor-pointer rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      Require DMHOUSE Academy
+                    </p>
+
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Standard hires complete
+                      Academy and must score at
+                      least 75% on the final
+                      assessment before entering
+                      the Employee Sales OS.
+                    </p>
+                  </div>
+
+                  <input
+                    type="checkbox"
+                    name="academyRequired"
+                    defaultChecked
+                    className="mt-1 h-5 w-5 shrink-0 accent-blue-600"
+                  />
+                </div>
+
+                <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+                  <strong>
+                    Owner bypass:
+                  </strong>{' '}
+                  Turn this off to waive
+                  Academy. The employee enters
+                  the Sales OS after account
+                  setup. A waiver is not an
+                  Academy certification.
+                </p>
+              </label>
+
               <PrimaryButton
                 className="w-full"
                 disabled={
@@ -610,7 +654,7 @@ export default function EmployeeManagement() {
 
                 {busy === 'invite'
                   ? 'Creating invite…'
-                  : 'Create Academy Invite'}
+                  : 'Create Employee Invite'}
               </PrimaryButton>
             </form>
 
@@ -622,13 +666,17 @@ export default function EmployeeManagement() {
                 />
 
                 <p className="text-xs leading-5 text-blue-900">
-                  The candidate creates
+                  The employee creates
                   one Supabase Auth
                   account from this
-                  invitation. That same
-                  login becomes their
-                  employee login after
+                  invitation.
+                  Academy-required hires
+                  unlock the Employee
+                  Sales OS after
                   certification.
+                  Owner-waived hires
+                  receive Sales OS access
+                  after account setup.
                 </p>
               </div>
             </div>

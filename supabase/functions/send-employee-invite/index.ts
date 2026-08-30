@@ -300,7 +300,7 @@ Deno.serve(
             'employee_invites',
           )
           .select(
-            'id,company_id,email,normalized_email,intended_full_name,token_hash,status,expires_at',
+            'id,company_id,email,normalized_email,intended_full_name,token_hash,status,expires_at,academy_required',
           )
           .eq(
             'id',
@@ -438,6 +438,34 @@ Deno.serve(
         );
 
 
+      const academyRequired =
+        invite.academy_required !== false;
+
+      const inviteHeadline =
+        academyRequired
+          ? "You're invited to DMHOUSE Academy"
+          : "You're invited to Data Market House";
+
+      const inviteSubtitle =
+        academyRequired
+          ? 'Employee onboarding · Certification · Sales OS access'
+          : 'Employee onboarding · Direct Sales OS access';
+
+      const invitePrimaryCopy =
+        academyRequired
+          ? 'You have been invited to join Data Market House as an employee candidate. Your first step is to create your secure account and complete DMHOUSE Academy.'
+          : 'You have been invited to join Data Market House as an employee. Your Academy requirement has been waived by the Owner. Create your secure account to enter the Employee Sales OS.';
+
+      const inviteSecondaryCopy =
+        academyRequired
+          ? 'Once your account is established, your Academy enrollment will be connected automatically to this invitation.'
+          : 'This Academy waiver is not a certification. After account setup, your employee access will be connected automatically to this invitation.';
+
+      const textAction =
+        academyRequired
+          ? 'Create your secure account and begin DMHOUSE Academy here:'
+          : 'Create your secure account and enter the Employee Sales OS here:';
+
       const html = `
 <!doctype html>
 <html>
@@ -455,11 +483,11 @@ Deno.serve(
                 </div>
 
                 <div style="margin-top:8px;font-size:25px;color:#ffffff;font-weight:700;">
-                  You're invited to DMHOUSE Academy
+                  ${escapeHtml(inviteHeadline)}
                 </div>
 
                 <div style="margin-top:8px;font-size:14px;line-height:1.6;color:#94a3b8;">
-                  Employee onboarding · Certification · Sales OS access
+                  ${escapeHtml(inviteSubtitle)}
                 </div>
               </td>
             </tr>
@@ -472,12 +500,11 @@ Deno.serve(
                 </p>
 
                 <p style="margin:0 0 18px;font-size:15px;line-height:1.7;color:#475569;">
-                  You have been invited to join Data Market House as an employee candidate.
-                  Your first step is to create your secure account and complete DMHOUSE Academy.
+                  ${escapeHtml(invitePrimaryCopy)}
                 </p>
 
                 <p style="margin:0 0 26px;font-size:15px;line-height:1.7;color:#475569;">
-                  Once your account is established, your Academy enrollment will be connected automatically to this invitation.
+                  ${escapeHtml(inviteSecondaryCopy)}
                 </p>
 
                 <table cellpadding="0" cellspacing="0" role="presentation">
@@ -524,9 +551,9 @@ Deno.serve(
       const text = `
 ${fullName ? `Hello ${fullName},` : 'Hello,'}
 
-You have been invited to join Data Market House as an employee candidate.
+${invitePrimaryCopy}
 
-Create your secure account and begin DMHOUSE Academy here:
+${textAction}
 
 ${inviteUrl}
 

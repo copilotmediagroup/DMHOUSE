@@ -996,7 +996,7 @@ export default function MissionSix({
               Passing
             </p>
             <p className="mt-2 text-3xl font-semibold">
-              90%
+              75%
             </p>
           </div>
 
